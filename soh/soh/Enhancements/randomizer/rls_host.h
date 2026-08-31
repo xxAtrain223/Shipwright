@@ -99,3 +99,15 @@ inline int bottle_count() {
 inline int check_price(const RandomizerCheck check = RC_UNKNOWN_CHECK) {
     return GetCheckPrice(check);
 }
+
+inline int effective_health() {
+    return logic->EffectiveHealth();
+}
+
+inline bool small_keys(SceneID scene, int requiredAmount) {
+    return logic->SmallKeys(static_cast<int16_t>(scene), requiredAmount);
+}
+
+inline int ocarina_buttons() {
+    return logic->OcarinaButtons();
+}

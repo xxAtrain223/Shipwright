@@ -111,3 +111,7 @@ inline bool small_keys(SceneID scene, int requiredAmount) {
 inline int ocarina_buttons() {
     return logic->OcarinaButtons();
 }
+
+inline bool any_age(ConditionFn condition) {
+    return AnyAgeTime(condition);
+}

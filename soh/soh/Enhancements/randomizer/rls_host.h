@@ -115,3 +115,19 @@ inline int ocarina_buttons() {
 inline bool any_age(ConditionFn condition) {
     return AnyAgeTime(condition);
 }
+
+inline bool bombchus_enabled() {
+    return logic->BombchusEnabled();
+}
+
+inline int get_big_poe_count() {
+    return logic->BigPoes;
+}
+
+inline bool can_trigger_lacs() {
+    return logic->CanTriggerLACS();
+}
+
+inline int stone_count() {
+    return logic->StoneCount();
+}

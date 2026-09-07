@@ -3,28 +3,20 @@
 #include "soh/Enhancements/randomizer/location_access.h"
 #include "soh/Enhancements/randomizer/entrance.h"
 
-inline bool has(const RandomizerGet item) {
-    return logic->HasItem(item);
+inline uint8_t setting(const RandomizerSettingKey key) {
+    return ctx->GetOption(key).Get();
 }
 
-inline bool can_use(const RandomizerGet item) {
-    return logic->CanUse(item);
+inline bool has(const RandomizerGet item) {
+    return logic->HasItem(item);
 }
 
 inline bool flag(const LogicVal key) {
     return logic->Get(key);
 }
 
-inline uint8_t setting(const RandomizerSettingKey key) {
-    return ctx->GetOption(key).Get();
-}
-
 inline bool trick(const RandomizerTrick key) {
     return (bool)ctx->GetTrickOption(key);
-}
-
-inline bool can_plant_bean(const RandomizerRegion reg, const RandomizerGet bean) {
-    return CanPlantBean(reg, bean);
 }
 
 inline bool is_child() {
@@ -84,50 +76,101 @@ inline bool is_mq() {
     return ctx->GetDungeon(dungeonKey)->IsMQ();
 }
 
-inline int required_triforce_pieces() {
-    return ctx->GetOption(RSK_TRIFORCE_HUNT_PIECES_REQUIRED).Get() + 1;
+inline bool any_age(ConditionFn condition) {
+    return AnyAgeTime(condition);
 }
 
-inline int collected_triforce_pieces() {
-    return logic->GetSaveContext()->ship.quest.data.randomizer.triforcePiecesCollected;
+inline bool spirit_shared(
+    RandomizerRegion region, ConditionFn condition, bool anyAge = false, RandomizerRegion otherRegion = RR_NONE,
+    ConditionFn otherCondition = [] { return false; }, RandomizerRegion thirdRegion = RR_NONE,
+    ConditionFn thirdCondition = [] { return false; }) {
+    return SpiritShared(region, condition, anyAge, otherRegion, otherCondition, thirdRegion, thirdCondition);
+}
+
+inline bool spirit_certain_access(RandomizerRegion region) {
+    return SpiritCertainAccess(region);
+}
+
+inline bool can_use(const RandomizerGet item) {
+    return logic->CanUse(item);
+}
+
+inline bool can_plant_bean(const RandomizerRegion reg, const RandomizerGet bean) {
+    return CanPlantBean(reg, bean);
 }
 
 inline int bottle_count() {
     return logic->BottleCount();
 }
 
-inline int check_price(const RandomizerCheck check = RC_UNKNOWN_CHECK) {
-    return GetCheckPrice(check);
-}
-
-inline int effective_health() {
-    return logic->EffectiveHealth();
-}
-
-inline bool small_keys(SceneID scene, int requiredAmount) {
-    return logic->SmallKeys(static_cast<int16_t>(scene), requiredAmount);
-}
-
 inline int ocarina_buttons() {
     return logic->OcarinaButtons();
-}
-
-inline bool any_age(ConditionFn condition) {
-    return AnyAgeTime(condition);
 }
 
 inline bool bombchus_enabled() {
     return logic->BombchusEnabled();
 }
 
+inline int effective_health() {
+    return logic->EffectiveHealth();
+}
+
+inline int hearts() {
+    return logic->Hearts();
+}
+
+inline int dungeon_count() {
+    return logic->DungeonCount();
+}
+
+inline int stone_count() {
+    return logic->StoneCount();
+}
+
+inline int medallion_count() {
+    return logic->MedallionCount();
+}
+
+inline int fire_timer() {
+    return logic->FireTimer();
+}
+
+inline int water_timer() {
+    return logic->WaterTimer();
+}
+
+inline int get_gs_count() {
+    return logic->GetGSCount();
+}
+
 inline int get_big_poe_count() {
     return logic->BigPoes;
+}
+
+inline int check_price(const RandomizerCheck check = RC_UNKNOWN_CHECK) {
+    return GetCheckPrice(check);
+}
+
+inline bool trial_skipped(TrialKey key) {
+    return ctx->GetTrial(TK_FOREST_TRIAL)->IsSkipped();
+}
+
+inline bool can_build_rainbow_bridge() {
+    return logic->CanBuildRainbowBridge();
 }
 
 inline bool can_trigger_lacs() {
     return logic->CanTriggerLACS();
 }
 
-inline int stone_count() {
-    return logic->StoneCount();
+inline bool small_keys(SceneID scene, int requiredAmount) {
+    return logic->SmallKeys(static_cast<int16_t>(scene), requiredAmount);
+}
+
+inline int required_triforce_pieces() {
+    return ctx->GetOption(RSK_TRIFORCE_HUNT_PIECES_REQUIRED).Get() + 1;
+}
+
+inline int collected_triforce_pieces() {
+    return logic->GetSaveContext()->ship.quest.data.randomizer.triforcePiecesCollected;
 }

@@ -152,7 +152,7 @@ inline int check_price(const RandomizerCheck check = RC_UNKNOWN_CHECK) {
 }
 
 inline bool trial_skipped(TrialKey key) {
-    return ctx->GetTrial(TK_FOREST_TRIAL)->IsSkipped();
+    return ctx->GetTrial(key)->IsSkipped();
 }
 
 inline bool can_build_rainbow_bridge() {

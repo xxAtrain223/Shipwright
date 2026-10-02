@@ -92,6 +92,7 @@ std::shared_ptr<EntranceTracker::EntranceTrackerSettingsWindow> mEntranceTracker
 std::shared_ptr<EntranceTracker::EntranceTrackerWindow> mEntranceTrackerWindow;
 std::shared_ptr<ItemTrackerSettingsWindow> mItemTrackerSettingsWindow;
 std::shared_ptr<ItemTrackerWindow> mItemTrackerWindow;
+std::shared_ptr<LogicTrackerWindow> mLogicTrackerWindow;
 std::shared_ptr<TimeSplitWindow> mTimeSplitWindow;
 std::shared_ptr<PlandomizerWindow> mPlandomizerWindow;
 std::shared_ptr<SohModalWindow> mModalWindow;
@@ -192,6 +193,8 @@ void SetupGuiElements() {
     mItemTrackerSettingsWindow = std::make_shared<ItemTrackerSettingsWindow>(CVAR_WINDOW("ItemTrackerSettings"),
                                                                              "Item Tracker Settings", ImVec2(733, 472));
     gui->AddGuiWindow(mItemTrackerSettingsWindow);
+    mLogicTrackerWindow = std::make_shared<LogicTrackerWindow>(CVAR_WINDOW("LogicTrackerEnabled"), "Logic Tracker");
+    gui->AddGuiWindow(mLogicTrackerWindow);
     mTimeSplitWindow = std::make_shared<TimeSplitWindow>(CVAR_WINDOW("TimeSplits"), "Time Splits", ImVec2(450, 660));
     gui->AddGuiWindow(mTimeSplitWindow);
     mPlandomizerWindow =
@@ -212,6 +215,7 @@ void Destroy() {
 
     mNotificationWindow = nullptr;
     mModalWindow = nullptr;
+    mLogicTrackerWindow = nullptr;
     mItemTrackerWindow = nullptr;
     mItemTrackerSettingsWindow = nullptr;
     mEntranceTrackerWindow = nullptr;

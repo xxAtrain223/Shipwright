@@ -6,6 +6,8 @@
 
 #include <deque>
 
+#include "logic/generated/soh/functions.gen.h"
+
 struct ExpressionEvaluation;
 
 class LogicExpression {
@@ -16,9 +18,7 @@ class LogicExpression {
 
     enum class ValueType { Identifier, Boolean, Number, Enum };
 
-    inline const std::vector<std::shared_ptr<LogicExpression>>& GetChildren() const noexcept {
-        return children;
-    }
+    std::vector<LogicExpression*> GetChildren() const;
 
     inline Type GetType() const noexcept {
         return type;
@@ -37,15 +37,78 @@ class LogicExpression {
     }
 
     inline const std::string& ToString() const noexcept {
-        return expression;
+        return expressionString;
     }
 
     const ExpressionEvaluation& Evaluate() const {
         throw std::runtime_error("Not Implemented");
     }
 
-  private:
+    static LogicExpression MakeAnd(std::function<ValueVariant()> lambda, std::vector<size_t> children) {
+        LogicExpression instance;
+        instance.type = Type::And;
+        instance.lambda = lambda;
+        instance.childrenIndexes = std::move(children);
+        return instance;
+    }
+
+    static LogicExpression MakeOr(std::function<ValueVariant()> lambda, std::vector<size_t> children) {
+        LogicExpression instance;
+        instance.type = Type::Or;
+        instance.lambda = lambda;
+        instance.childrenIndexes = std::move(children);
+        return instance;
+    }
+
+    static LogicExpression MakeNot(std::function<ValueVariant()> lambda, size_t child) {
+        LogicExpression instance;
+        instance.type = Type::Not;
+        instance.lambda = lambda;
+        instance.childrenIndexes = {child};
+        return instance;
+    }
+
+    static LogicExpression MakeComparison(std::function<ValueVariant()> lambda, std::string operation, std::vector<size_t> children) {
+        LogicExpression instance;
+        instance.type = Type::Comparison;
+        instance.lambda = lambda;
+        instance.operation = operation;
+        instance.childrenIndexes = std::move(children);
+        return instance;
+    }
+
+    static LogicExpression MakeFunctionCall(std::function<ValueVariant()> lambda, std::string functionName,
+                                            std::vector<size_t> parameters, std::vector<size_t> definition) {
+        LogicExpression instance;
+        instance.type = Type::FunctionCall;
+        instance.lambda = lambda;
+        instance.functionName = std::move(functionName);
+        instance.parameters = std::move(parameters);
+        instance.childrenIndexes = std::move(definition);
+        return std::move(instance);
+    }
+
+    static LogicExpression MakeValue(std::function<ValueVariant()> lambda, std::string expression, ValueType valueType) {
+        LogicExpression instance;
+        instance.type = Type::Value;
+        instance.lambda = lambda;
+        instance.expressionString = std::move(expression);
+        instance.valueType = valueType;
+        return std::move(instance);
+    }
+
+    static LogicExpression MakeTernary(std::function<ValueVariant()> lambda, std::vector<size_t> children) {
+        LogicExpression instance;
+        instance.type = Type::Ternary;
+        instance.lambda = lambda;
+        instance.childrenIndexes = std::move(children);
+        return std::move(instance);
+    }
+
+private:
     std::vector<std::shared_ptr<LogicExpression>> children;
+    std::vector<size_t> parameters;
+    std::vector<size_t> childrenIndexes;
 
     Type type;
 
@@ -55,14 +118,57 @@ class LogicExpression {
 
     std::string functionName;
 
-    std::string expression;
+    std::string expressionString;
+
+    std::function<ValueVariant()> lambda;
 };
 
 struct ExpressionEvaluation {
-    std::shared_ptr<LogicExpression> Expression;
+    LogicExpression* Expression;
     LogicExpression::ValueVariant Result;
     std::vector<ExpressionEvaluation> Children;
 };
+
+// clang-format off
+struct LogicLibrary {
+    static inline auto Expressions = std::to_array({
+    /* 0*/LogicExpression::MakeAnd([]{ return has(RG_SPEAK_HYLIAN) && check_price() <= wallet_capacity(); }, {1, 3}),
+    /* 1*/LogicExpression::MakeFunctionCall([]{ return has(RG_SPEAK_KOKIRI); }, "has", {1}, {}),
+    /* 2*/LogicExpression::MakeValue([]{ return RG_SPEAK_KOKIRI; }, "RG_SPEAK_KOKIRI", LogicExpression::ValueType::Enum),
+    /* 3*/LogicExpression::MakeComparison([]{ return check_price() <= wallet_capacity(); }, "<=", {4, 5}),
+    /* 4*/LogicExpression::MakeFunctionCall([]{ return check_price(); }, "check_price", {}, {}),
+    /* 5*/LogicExpression::MakeFunctionCall([]{ return wallet_capacity(); }, "wallet_capacity", {}, {6}),
+    /* 6*/LogicExpression::MakeTernary([]{ return has(RG_TYCOON_WALLET) ? 999 : has(RG_GIANT_WALLET) ? 500 : has(RG_ADULT_WALLET) ? 200 : has(RG_CHILD_WALLET) ? 99 : 0; }, {7, 9, 10}),
+    /* 7*/LogicExpression::MakeFunctionCall([]{ return has(RG_TYCOON_WALLET); }, "has", {8}, {}),
+    /* 8*/LogicExpression::MakeValue([]{ return RG_TYCOON_WALLET; }, "RG_TYCOON_WALLET", LogicExpression::ValueType::Enum),
+    /* 9*/LogicExpression::MakeValue([]{ return 999; }, "999", LogicExpression::ValueType::Number),
+    /*10*/LogicExpression::MakeTernary([]{ return has(RG_GIANT_WALLET) ? 500 : has(RG_ADULT_WALLET) ? 200 : has(RG_CHILD_WALLET) ? 99 : 0; }, {11, 13, 14}),
+    /*11*/LogicExpression::MakeFunctionCall([]{ return has(RG_GIANT_WALLET); }, "has", {12}, {}),
+    /*12*/LogicExpression::MakeValue([]{ return RG_GIANT_WALLET; }, "RG_GIANT_WALLET", LogicExpression::ValueType::Enum),
+    /*13*/LogicExpression::MakeValue([]{ return 500; }, "500", LogicExpression::ValueType::Number),
+    /*14*/LogicExpression::MakeTernary([]{ return has(RG_ADULT_WALLET) ? 200 : has(RG_CHILD_WALLET) ? 99 : 0; }, {15, 17, 18}),
+    /*15*/LogicExpression::MakeFunctionCall([]{ return has(RG_ADULT_WALLET); }, "has", {16}, {}),
+    /*16*/LogicExpression::MakeValue([]{ return RG_ADULT_WALLET; }, "RG_ADULT_WALLET", LogicExpression::ValueType::Enum),
+    /*17*/LogicExpression::MakeValue([]{ return 200; }, "200", LogicExpression::ValueType::Number),
+    /*18*/LogicExpression::MakeTernary([]{ return has(RG_CHILD_WALLET) ? 99 : 0; }, {19, 21, 22}),
+    /*19*/LogicExpression::MakeFunctionCall([]{ return has(RG_CHILD_WALLET); }, "has", {20}, {}),
+    /*20*/LogicExpression::MakeValue([]{ return RG_CHILD_WALLET; }, "RG_CHILD_WALLET", LogicExpression::ValueType::Enum),
+    /*21*/LogicExpression::MakeValue([]{ return 99; }, "99", LogicExpression::ValueType::Number),
+    /*22*/LogicExpression::MakeValue([]{ return 0; }, "0", LogicExpression::ValueType::Number),
+    });
+
+    static inline auto RR_MARKET_BAZAAR_RC_MARKET_BAZAAR_ITEM_1 = &Expressions[0];
+};
+// clang-format on
+
+std::vector<LogicExpression*> LogicExpression::GetChildren() const {
+    std::vector<LogicExpression*> children;
+    children.reserve(childrenIndexes.size());
+    for (auto index : childrenIndexes) {
+        children.push_back(&LogicLibrary::Expressions[index]);
+    }
+    return std::move(children);
+}
 
 std::map<std::string, std::shared_ptr<LogicExpression>> expressions;
 
@@ -106,7 +212,7 @@ static bool ToBool(const std::optional<LogicExpression::ValueVariant>& value) {
 
 struct ExpressionTable {
     struct ExpressionRow {
-        std::shared_ptr<LogicExpression> Expression;
+        LogicExpression* Expression;
         std::vector<ExpressionRow> Children;
         std::optional<LogicExpression::ValueVariant> ChildDay;
         std::optional<LogicExpression::ValueVariant> ChildNight;
@@ -267,7 +373,7 @@ size_t expandNodeId = -1;
 size_t clearNodesAfterNodeID = -1;
 std::vector<LogicTrackerNode> nodes;
 
-static ExpressionTable::ExpressionRow CreateExpressionRows(const std::shared_ptr<LogicExpression>& expression) {
+static ExpressionTable::ExpressionRow CreateExpressionRows(LogicExpression* expression) {
     ExpressionTable::ExpressionRow row;
     row.Expression = expression;
     row.Expanded = false;
@@ -319,7 +425,8 @@ static std::tuple<bool, bool, bool> CalculateCombines(const ExpressionTable::Exp
 }
 
 static void PopulateConnectionExpression(LogicTrackerNode::Connection& connection, const std::string& expressionStr) {
-    auto expression = expressions[expressionStr];
+    //auto expression = expressions[expressionStr];
+    auto expression = LogicLibrary::RR_MARKET_BAZAAR_RC_MARKET_BAZAAR_ITEM_1;
 
     LogicStateGuard logicStateGuard;
 

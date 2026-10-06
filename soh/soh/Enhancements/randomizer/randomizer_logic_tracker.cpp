@@ -5,194 +5,68 @@
 #include "../../OTRGlobals.h"
 
 #include <deque>
+#include <stack>
+#include <ranges>
 
 #include "logic/generated/soh/functions.gen.h"
 
-struct ExpressionEvaluation;
+struct EvalResult;
+
+typedef uint16_t index_t;
+constexpr index_t INVALID_INDEX = -1;
 
 class LogicExpression {
   public:
-    using ValueVariant = std::variant<bool, int8_t, int16_t, int32_t, uint8_t, uint16_t, uint32_t>;
+    using value_t = std::variant<bool, int8_t, int16_t, int32_t, uint8_t, uint16_t, uint32_t>;
 
-    enum class Type { And, Or, Not, Comparison, FunctionCall, Value, Add, Subtract, Multiply, Divide, Ternary };
+    class Scope {
+      public:
+        void push(std::string_view variableName, value_t value) {
+            if (!variables.contains(variableName)) {
+                variables[variableName] = {};
+            }
+            variables[variableName].push(value);
+        }
 
-    enum class ValueType { Identifier, Boolean, Number, Enum };
+        value_t get(std::string_view variableName) const {
+            return variables.at(variableName).top();
+        }
+
+        void pop(std::string_view variableName) {
+            auto& stack = variables.at(variableName);
+            if (stack.empty()) {
+                variables.erase(variableName);
+            }
+        }
+
+        ~Scope() {
+            assert(variables.empty());
+        }
+
+      private:
+        std::unordered_map<std::string_view, std::stack<value_t>> variables;
+    };
+
+    typedef value_t (*function_t)(Scope&);
 
     std::vector<LogicExpression*> GetChildren() const;
 
-    inline Type GetType() const noexcept {
-        return type;
-    }
+    virtual EvalResult Evaluate(Scope& scope) const = 0;
 
-    inline ValueType GetValueType() const noexcept {
-        return valueType;
-    }
+    virtual void Draw() const = 0;
 
-    inline const std::string& GetOperation() const noexcept {
-        return operation;
-    }
-
-    inline const std::string& GetFunctionName() const noexcept {
-        return functionName;
-    }
-
-    inline const std::string& ToString() const noexcept {
-        return expressionString;
-    }
-
-    const ExpressionEvaluation& Evaluate() const {
-        throw std::runtime_error("Not Implemented");
-    }
-
-    static LogicExpression MakeAnd(std::function<ValueVariant()> lambda, std::vector<size_t> children) {
-        LogicExpression instance;
-        instance.type = Type::And;
-        instance.lambda = lambda;
-        instance.childrenIndexes = std::move(children);
-        return instance;
-    }
-
-    static LogicExpression MakeOr(std::function<ValueVariant()> lambda, std::vector<size_t> children) {
-        LogicExpression instance;
-        instance.type = Type::Or;
-        instance.lambda = lambda;
-        instance.childrenIndexes = std::move(children);
-        return instance;
-    }
-
-    static LogicExpression MakeNot(std::function<ValueVariant()> lambda, size_t child) {
-        LogicExpression instance;
-        instance.type = Type::Not;
-        instance.lambda = lambda;
-        instance.childrenIndexes = {child};
-        return instance;
-    }
-
-    static LogicExpression MakeComparison(std::function<ValueVariant()> lambda, std::string operation, std::vector<size_t> children) {
-        LogicExpression instance;
-        instance.type = Type::Comparison;
-        instance.lambda = lambda;
-        instance.operation = operation;
-        instance.childrenIndexes = std::move(children);
-        return instance;
-    }
-
-    static LogicExpression MakeFunctionCall(std::function<ValueVariant()> lambda, std::string functionName,
-                                            std::vector<size_t> parameters, std::vector<size_t> definition) {
-        LogicExpression instance;
-        instance.type = Type::FunctionCall;
-        instance.lambda = lambda;
-        instance.functionName = std::move(functionName);
-        instance.parameters = std::move(parameters);
-        instance.childrenIndexes = std::move(definition);
-        return std::move(instance);
-    }
-
-    static LogicExpression MakeValue(std::function<ValueVariant()> lambda, std::string expression, ValueType valueType) {
-        LogicExpression instance;
-        instance.type = Type::Value;
-        instance.lambda = lambda;
-        instance.expressionString = std::move(expression);
-        instance.valueType = valueType;
-        return std::move(instance);
-    }
-
-    static LogicExpression MakeTernary(std::function<ValueVariant()> lambda, std::vector<size_t> children) {
-        LogicExpression instance;
-        instance.type = Type::Ternary;
-        instance.lambda = lambda;
-        instance.childrenIndexes = std::move(children);
-        return std::move(instance);
-    }
-
-private:
-    std::vector<std::shared_ptr<LogicExpression>> children;
-    std::vector<size_t> parameters;
-    std::vector<size_t> childrenIndexes;
-
-    Type type;
-
-    ValueType valueType;
-
-    std::string operation;
-
-    std::string functionName;
-
-    std::string expressionString;
-
-    std::function<ValueVariant()> lambda;
+  protected:
+    function_t _function;
+    std::vector<index_t> _childrenIndexes;
 };
 
-struct ExpressionEvaluation {
-    LogicExpression* Expression;
-    LogicExpression::ValueVariant Result;
-    std::vector<ExpressionEvaluation> Children;
+struct EvalResult {
+    const LogicExpression* Expression;
+    LogicExpression::value_t Result;
+    std::vector<EvalResult> Children;
 };
 
-// clang-format off
-struct LogicLibrary {
-    static inline auto Expressions = std::to_array({
-    /* 0*/LogicExpression::MakeAnd([]{ return has(RG_SPEAK_HYLIAN) && check_price() <= wallet_capacity(); }, {1, 3}),
-    /* 1*/LogicExpression::MakeFunctionCall([]{ return has(RG_SPEAK_KOKIRI); }, "has", {1}, {}),
-    /* 2*/LogicExpression::MakeValue([]{ return RG_SPEAK_KOKIRI; }, "RG_SPEAK_KOKIRI", LogicExpression::ValueType::Enum),
-    /* 3*/LogicExpression::MakeComparison([]{ return check_price() <= wallet_capacity(); }, "<=", {4, 5}),
-    /* 4*/LogicExpression::MakeFunctionCall([]{ return check_price(); }, "check_price", {}, {}),
-    /* 5*/LogicExpression::MakeFunctionCall([]{ return wallet_capacity(); }, "wallet_capacity", {}, {6}),
-    /* 6*/LogicExpression::MakeTernary([]{ return has(RG_TYCOON_WALLET) ? 999 : has(RG_GIANT_WALLET) ? 500 : has(RG_ADULT_WALLET) ? 200 : has(RG_CHILD_WALLET) ? 99 : 0; }, {7, 9, 10}),
-    /* 7*/LogicExpression::MakeFunctionCall([]{ return has(RG_TYCOON_WALLET); }, "has", {8}, {}),
-    /* 8*/LogicExpression::MakeValue([]{ return RG_TYCOON_WALLET; }, "RG_TYCOON_WALLET", LogicExpression::ValueType::Enum),
-    /* 9*/LogicExpression::MakeValue([]{ return 999; }, "999", LogicExpression::ValueType::Number),
-    /*10*/LogicExpression::MakeTernary([]{ return has(RG_GIANT_WALLET) ? 500 : has(RG_ADULT_WALLET) ? 200 : has(RG_CHILD_WALLET) ? 99 : 0; }, {11, 13, 14}),
-    /*11*/LogicExpression::MakeFunctionCall([]{ return has(RG_GIANT_WALLET); }, "has", {12}, {}),
-    /*12*/LogicExpression::MakeValue([]{ return RG_GIANT_WALLET; }, "RG_GIANT_WALLET", LogicExpression::ValueType::Enum),
-    /*13*/LogicExpression::MakeValue([]{ return 500; }, "500", LogicExpression::ValueType::Number),
-    /*14*/LogicExpression::MakeTernary([]{ return has(RG_ADULT_WALLET) ? 200 : has(RG_CHILD_WALLET) ? 99 : 0; }, {15, 17, 18}),
-    /*15*/LogicExpression::MakeFunctionCall([]{ return has(RG_ADULT_WALLET); }, "has", {16}, {}),
-    /*16*/LogicExpression::MakeValue([]{ return RG_ADULT_WALLET; }, "RG_ADULT_WALLET", LogicExpression::ValueType::Enum),
-    /*17*/LogicExpression::MakeValue([]{ return 200; }, "200", LogicExpression::ValueType::Number),
-    /*18*/LogicExpression::MakeTernary([]{ return has(RG_CHILD_WALLET) ? 99 : 0; }, {19, 21, 22}),
-    /*19*/LogicExpression::MakeFunctionCall([]{ return has(RG_CHILD_WALLET); }, "has", {20}, {}),
-    /*20*/LogicExpression::MakeValue([]{ return RG_CHILD_WALLET; }, "RG_CHILD_WALLET", LogicExpression::ValueType::Enum),
-    /*21*/LogicExpression::MakeValue([]{ return 99; }, "99", LogicExpression::ValueType::Number),
-    /*22*/LogicExpression::MakeValue([]{ return 0; }, "0", LogicExpression::ValueType::Number),
-    });
-
-    static inline auto RR_MARKET_BAZAAR_RC_MARKET_BAZAAR_ITEM_1 = &Expressions[0];
-};
-// clang-format on
-
-std::vector<LogicExpression*> LogicExpression::GetChildren() const {
-    std::vector<LogicExpression*> children;
-    children.reserve(childrenIndexes.size());
-    for (auto index : childrenIndexes) {
-        children.push_back(&LogicLibrary::Expressions[index]);
-    }
-    return std::move(children);
-}
-
-std::map<std::string, std::shared_ptr<LogicExpression>> expressions;
-
-static std::string ToString(const LogicExpression::ValueVariant& value) {
-    return std::visit(
-        [](auto v) -> std::string {
-            using V = std::decay_t<decltype(v)>;
-            if constexpr (std::is_same_v<V, bool>) {
-                return v ? "true" : "false";
-            } else {
-                return std::to_string(v);
-            }
-        },
-        value);
-}
-
-static std::string ToString(const std::optional<LogicExpression::ValueVariant>& value) {
-    if (!value.has_value()) {
-        return "";
-    }
-    return ToString(value.value());
-}
-
-static bool ToBool(const std::optional<LogicExpression::ValueVariant>& value) {
+static bool ToBool(const std::optional<LogicExpression::value_t>& value) {
     if (!value.has_value()) {
         return false;
     }
@@ -210,14 +84,376 @@ static bool ToBool(const std::optional<LogicExpression::ValueVariant>& value) {
         value.value());
 }
 
+template <typename T>
+static T ToInt(const std::optional<LogicExpression::value_t>& value) {
+    if (!value.has_value()) {
+        return 0;
+    }
+    return std::visit(
+        [](auto v) -> T {
+            using V = std::decay_t<decltype(v)>;
+            if constexpr (std::is_same_v<V, bool>) {
+                return v ? 1 : 0;
+            } else if constexpr (std::is_integral_v<V>) {
+                return static_cast<T>(v);
+            } else {
+                throw std::bad_variant_access();
+            }
+        },
+        value.value());
+}
+
+class AndExpression : public LogicExpression {
+  public:
+    AndExpression(std::vector<index_t> childrenIndexes) {
+        _childrenIndexes = childrenIndexes;
+    }
+
+    EvalResult Evaluate(Scope& scope) const override {
+        EvalResult evalResult;
+        evalResult.Expression = this;
+
+        bool boolResult = true;
+        for (auto child : GetChildren()) {
+            auto childResult = child->Evaluate(scope);
+            evalResult.Children.push_back(childResult);
+
+            boolResult &= ToBool(childResult.Result);
+            if (!boolResult) {
+                break;
+            }
+        }
+        evalResult.Result = boolResult;
+
+        return std::move(evalResult);
+    }
+
+    void Draw() const override {
+    }
+};
+
+class OrExpression : public LogicExpression {
+  public:
+    OrExpression(std::vector<index_t> childrenIndexes) {
+        _childrenIndexes = childrenIndexes;
+    }
+
+    EvalResult Evaluate(Scope& scope) const override {
+        EvalResult evalResult;
+        evalResult.Expression = this;
+
+        bool boolResult = false;
+        for (auto child : GetChildren()) {
+            auto childResult = child->Evaluate(scope);
+            evalResult.Children.push_back(childResult);
+
+            boolResult |= ToBool(childResult.Result);
+            if (boolResult) {
+                break;
+            }
+        }
+        evalResult.Result = boolResult;
+
+        return std::move(evalResult);
+    }
+
+    void Draw() const override {
+    }
+};
+
+class NotExpression : public LogicExpression {
+  public:
+    NotExpression(index_t childIndex) {
+        _childrenIndexes = { childIndex };
+    }
+
+    EvalResult Evaluate(Scope& scope) const override {
+        EvalResult evalResult;
+        evalResult.Expression = this;
+
+        auto child = GetChildren()[0];
+        auto childResult = child->Evaluate(scope);
+        evalResult.Children.push_back(childResult);
+        evalResult.Result = !ToBool(childResult.Result);
+
+        return std::move(evalResult);
+    }
+
+    void Draw() const override {
+    }
+};
+
+class ComparisonExpression : public LogicExpression {
+  public:
+    ComparisonExpression(std::string_view operation, index_t left, index_t right) {
+        _operation = operation;
+        _childrenIndexes = { left, right };
+    }
+
+    EvalResult Evaluate(Scope& scope) const override {
+        EvalResult evalResult;
+        evalResult.Expression = this;
+
+        auto children = GetChildren();
+
+        auto left = children[0];
+        auto leftResult = left->Evaluate(scope);
+        evalResult.Children.push_back(leftResult);
+
+        auto right = children[1];
+        auto rightResult = right->Evaluate(scope);
+        evalResult.Children.push_back(rightResult);
+
+        auto compare = [&](auto a, auto b) -> bool {
+            using A = decltype(a);
+            using B = decltype(b);
+
+            if constexpr (std::is_same_v<A, bool> && std::is_same_v<B, bool>) {
+                if (_operation == "==")
+                    return a == b;
+                if (_operation == "!=")
+                    return a != b;
+                throw std::runtime_error("Unsupported operator for booleans: " + std::string(_operation));
+            } else if constexpr (std::is_integral_v<A> && std::is_integral_v<B>) {
+                auto l = static_cast<int64_t>(a);
+                auto r = static_cast<int64_t>(b);
+                if (_operation == "==")
+                    return l == r;
+                if (_operation == "!=")
+                    return l != r;
+                if (_operation == ">=")
+                    return l >= r;
+                if (_operation == "<=")
+                    return l <= r;
+                if (_operation == ">")
+                    return l > r;
+                if (_operation == "<")
+                    return l < r;
+                throw std::runtime_error("Unknown comparison operator: " + std::string(_operation));
+            } else {
+                throw std::runtime_error("Invalid comparison between types");
+            }
+        };
+
+        evalResult.Result = std::visit(compare, leftResult.Result, rightResult.Result);
+
+        return std::move(evalResult);
+    }
+
+    void Draw() const override {
+    }
+
+  private:
+    std::string_view _operation;
+};
+
+class FunctionCallExpression : public LogicExpression {
+  public:
+    FunctionCallExpression(std::string_view functionName, std::vector<std::string_view> parameterNames, std::vector<index_t> parameters, index_t definition) {
+        _functionName = functionName;
+        _parameterNames = parameterNames;
+        _childrenIndexes.insert(_childrenIndexes.end(), parameters.begin(), parameters.end());
+        _childrenIndexes.push_back(definition);
+    }
+
+    EvalResult Evaluate(Scope& scope) const override {
+        EvalResult evalResult;
+        evalResult.Expression = this;
+
+        auto children = GetChildren();
+
+        for (size_t i = 0; i < _parameterNames.size(); i++) {
+            auto childResult = children[i]->Evaluate(scope);
+            scope.push(_parameterNames[i], childResult.Result);
+            evalResult.Children.push_back(childResult);
+        }
+
+        auto functionResult = children.back()->Evaluate(scope);
+        evalResult.Children.push_back(functionResult);
+
+        evalResult.Result = functionResult.Result;
+
+        for (auto parameterName : _parameterNames) {
+            scope.pop(parameterName);
+        }
+
+        return std::move(evalResult);
+    }
+
+    void Draw() const override {
+    }
+
+  private:
+    std::string_view _functionName;
+    std::vector<std::string_view> _parameterNames;
+};
+
+class ExternFunctionCallExpression : public LogicExpression {
+  public:
+    ExternFunctionCallExpression(function_t function, std::string_view functionName, std::vector<std::string_view> parameterNames, std::vector<index_t> parameters) {
+        _function = function;
+        _functionName = functionName;
+        _parameterNames = parameterNames;
+        _childrenIndexes.insert(_childrenIndexes.end(), parameters.begin(), parameters.end());
+    }
+
+    EvalResult Evaluate(Scope& scope) const override {
+        EvalResult evalResult;
+        evalResult.Expression = this;
+
+        auto children = GetChildren();
+
+        for (size_t i = 0; i < _parameterNames.size(); i++) {
+            auto childResult = children[i]->Evaluate(scope);
+            scope.push(_parameterNames[i], childResult.Result);
+            evalResult.Children.push_back(childResult);
+        }
+
+        evalResult.Result = _function(scope);
+
+        for (auto parameterName : _parameterNames) {
+            scope.pop(parameterName);
+        }
+
+        return std::move(evalResult);
+    }
+
+    void Draw() const override {
+    }
+
+  private:
+    std::string_view _functionName;
+    std::vector<std::string_view> _parameterNames;
+};
+
+class ValueExpression : public LogicExpression {
+  public:
+    ValueExpression(function_t function, std::string_view expression, bool isEvent) {
+        _function = function;
+        _isEvent = isEvent;
+    }
+
+    EvalResult Evaluate(Scope& scope) const override {
+        EvalResult evalResult;
+        evalResult.Expression = this;
+        evalResult.Result = _function(scope);
+        return std::move(evalResult);
+    }
+
+    void Draw() const override {
+    }
+
+  private:
+    function_t _function;
+    bool _isEvent;
+};
+
+class TernaryExpression : public LogicExpression {
+  public:
+    TernaryExpression(index_t condition, index_t trueBranch, index_t falseBranch) {
+        _childrenIndexes = { condition, trueBranch, falseBranch };
+    }
+
+    EvalResult Evaluate(Scope& scope) const override {
+        EvalResult evalResult;
+        evalResult.Expression = this;
+
+        auto children = GetChildren();
+
+        auto conditionResult = children[0]->Evaluate(scope);
+        evalResult.Children.push_back(conditionResult);
+
+        auto branchResult = ToBool(evalResult.Result) ? children[1]->Evaluate(scope) : children[2]->Evaluate(scope);
+        evalResult.Children.push_back(branchResult);
+        evalResult.Result = branchResult.Result;
+
+        return std::move(evalResult);
+    }
+
+    void Draw() const override {
+    }
+};
+
+static LogicExpression::value_t has_adapter(LogicExpression::Scope& scope) {
+    auto item = static_cast<RandomizerGet>(ToInt<uint32_t>(scope.get("item")));
+    return static_cast<LogicExpression::value_t>(has(item));
+}
+
+static LogicExpression::value_t check_price_adapter(LogicExpression::Scope& scope) {
+    return static_cast<LogicExpression::value_t>(check_price());
+}
+
+// clang-format off
+struct LogicLibrary {
+    static inline auto Expressions = std::to_array<LogicExpression*>({
+    /* 0*/ new AndExpression({1, 3}),
+    /* 1*/ new ExternFunctionCallExpression(has_adapter, "has", {"item"}, {2}),
+    /* 2*/ new ValueExpression([](LogicExpression::Scope& scope){ return static_cast<LogicExpression::value_t>(RG_SPEAK_KOKIRI); }, "RG_SPEAK_KOKIRI", false),
+    /* 3*/ new ComparisonExpression("<=", 4, 5),
+    /* 4*/ new ExternFunctionCallExpression(check_price_adapter, "check_price", {}, {}),
+    /* 5*/ new FunctionCallExpression("wallet_capacity", {}, {}, 6),
+    /* 6*/ new TernaryExpression(7, 9, 10),
+    /* 7*/ new ExternFunctionCallExpression(has_adapter, "has",  {"item"}, {8}),
+    /* 8*/ new ValueExpression([](LogicExpression::Scope& scope){ return static_cast<LogicExpression::value_t>(RG_TYCOON_WALLET); }, "RG_TYCOON_WALLET", false),
+    /* 9*/ new ValueExpression([](LogicExpression::Scope& scope){ return static_cast<LogicExpression::value_t>(999); }, "999", false),
+    /*10*/ new TernaryExpression(11, 13, 14),
+    /*11*/ new ExternFunctionCallExpression(has_adapter, "has",  {"item"}, {12}),
+    /*12*/ new ValueExpression([](LogicExpression::Scope& scope){ return static_cast<LogicExpression::value_t>(RG_GIANT_WALLET); }, "RG_GIANT_WALLET", false),
+    /*13*/ new ValueExpression([](LogicExpression::Scope& scope){ return static_cast<LogicExpression::value_t>(500); }, "500", false),
+    /*14*/ new TernaryExpression(15, 17, 18),
+    /*15*/ new ExternFunctionCallExpression(has_adapter, "has",  {"item"}, {16}),
+    /*16*/ new ValueExpression([](LogicExpression::Scope& scope){ return static_cast<LogicExpression::value_t>(RG_ADULT_WALLET); }, "RG_ADULT_WALLET", false),
+    /*17*/ new ValueExpression([](LogicExpression::Scope& scope){ return static_cast<LogicExpression::value_t>(200); }, "200", false),
+    /*18*/ new TernaryExpression(19, 21, 22),
+    /*19*/ new ExternFunctionCallExpression(has_adapter, "has",  {"item"}, {20}),
+    /*20*/ new ValueExpression([](LogicExpression::Scope& scope){ return static_cast<LogicExpression::value_t>(RG_CHILD_WALLET); }, "RG_CHILD_WALLET", false),
+    /*21*/ new ValueExpression([](LogicExpression::Scope& scope){ return static_cast<LogicExpression::value_t>(99); }, "99", false),
+    /*22*/ new ValueExpression([](LogicExpression::Scope& scope){ return static_cast<LogicExpression::value_t>(0); }, "0", false),
+    });
+
+    static inline auto RR_MARKET_BAZAAR_RC_MARKET_BAZAAR_ITEM_1 = Expressions[0];
+};
+// clang-format on
+
+std::vector<LogicExpression*> LogicExpression::GetChildren() const {
+    std::vector<LogicExpression*> children;
+    children.reserve(_childrenIndexes.size());
+    for (auto index : _childrenIndexes) {
+        children.push_back(LogicLibrary::Expressions[index]);
+    }
+    return std::move(children);
+}
+
+std::map<std::string, std::shared_ptr<LogicExpression>> expressions;
+
+static std::string ToString(const LogicExpression::value_t& value) {
+    return std::visit(
+        [](auto v) -> std::string {
+            using V = std::decay_t<decltype(v)>;
+            if constexpr (std::is_same_v<V, bool>) {
+                return v ? "true" : "false";
+            } else {
+                return std::to_string(v);
+            }
+        },
+        value);
+}
+
+static std::string ToString(const std::optional<LogicExpression::value_t>& value) {
+    if (!value.has_value()) {
+        return "";
+    }
+    return ToString(value.value());
+}
+
 struct ExpressionTable {
     struct ExpressionRow {
         LogicExpression* Expression;
         std::vector<ExpressionRow> Children;
-        std::optional<LogicExpression::ValueVariant> ChildDay;
-        std::optional<LogicExpression::ValueVariant> ChildNight;
-        std::optional<LogicExpression::ValueVariant> AdultDay;
-        std::optional<LogicExpression::ValueVariant> AdultNight;
+        std::optional<LogicExpression::value_t> ChildDay;
+        std::optional<LogicExpression::value_t> ChildNight;
+        std::optional<LogicExpression::value_t> AdultDay;
+        std::optional<LogicExpression::value_t> AdultNight;
         bool Expanded = false;
         std::string ErrorMessage;
     };
@@ -389,7 +625,7 @@ static ExpressionTable::ExpressionRow CreateExpressionRows(LogicExpression* expr
 
 enum class AgeTime { ChildDay, ChildNight, AdultDay, AdultNight };
 
-static void PopulateExpressionValues(ExpressionTable::ExpressionRow& row, const ExpressionEvaluation& eval,
+static void PopulateExpressionValues(ExpressionTable::ExpressionRow& row, const EvalResult& eval,
                                      AgeTime ageTime) {
     if (ageTime == AgeTime::ChildDay) {
         row.ChildDay = eval.Result;
@@ -442,7 +678,8 @@ static void PopulateConnectionExpression(LogicTrackerNode::Connection& connectio
             logic->IsChild = true;
             logic->AtDay = true;
 
-            const auto& eval = connection.ExpressionTable.Root.Expression->Evaluate();
+            LogicExpression::Scope scope;
+            const auto& eval = connection.ExpressionTable.Root.Expression->Evaluate(scope);
             PopulateExpressionValues(connection.ExpressionTable.Root, eval, AgeTime::ChildDay);
 
             logic->IsChild = false;
@@ -452,7 +689,8 @@ static void PopulateConnectionExpression(LogicTrackerNode::Connection& connectio
             logic->IsChild = true;
             logic->AtNight = true;
 
-            const auto& eval = connection.ExpressionTable.Root.Expression->Evaluate();
+            LogicExpression::Scope scope;
+            const auto& eval = connection.ExpressionTable.Root.Expression->Evaluate(scope);
             PopulateExpressionValues(connection.ExpressionTable.Root, eval, AgeTime::ChildNight);
 
             logic->IsChild = false;
@@ -462,7 +700,8 @@ static void PopulateConnectionExpression(LogicTrackerNode::Connection& connectio
             logic->IsAdult = true;
             logic->AtDay = true;
 
-            const auto& eval = connection.ExpressionTable.Root.Expression->Evaluate();
+            LogicExpression::Scope scope;
+            const auto& eval = connection.ExpressionTable.Root.Expression->Evaluate(scope);
             PopulateExpressionValues(connection.ExpressionTable.Root, eval, AgeTime::AdultDay);
 
             logic->IsAdult = false;
@@ -472,7 +711,8 @@ static void PopulateConnectionExpression(LogicTrackerNode::Connection& connectio
             logic->IsAdult = true;
             logic->AtNight = true;
 
-            const auto& eval = connection.ExpressionTable.Root.Expression->Evaluate();
+            LogicExpression::Scope scope;
+            const auto& eval = connection.ExpressionTable.Root.Expression->Evaluate(scope);
             PopulateExpressionValues(connection.ExpressionTable.Root, eval, AgeTime::AdultNight);
 
             logic->IsAdult = false;
@@ -684,6 +924,7 @@ static void DrawColoredWrappedText(const std::vector<std::pair<ImVec4, std::stri
     ImGui::SetCursorScreenPos(ImVec2(pos.x, y + fontSize));
 }
 
+#if 0
 static void DrawCondition(const LogicExpression& expression) {
     static ImVec4 fontColors[] = {
         ImVec4(0.5f, 0.5f, 1.0f, 1.0f), // Blue
@@ -737,6 +978,7 @@ static void DrawCondition(const LogicExpression& expression) {
         DrawColoredWrappedText({ { defaultColor, expression.ToString() } });
     }
 }
+#endif
 
 static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTable& table,
                               ExpressionTable::ExpressionRow& row, int level) {
@@ -777,7 +1019,8 @@ static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTabl
         ImGui::Button(std::to_string(level).c_str());
         ImGui::EndDisabled();
 
-        if (expression.GetType() == LogicExpression::Type::Value &&
+        // TODO: re-implement
+        /*if (expression.GetType() == LogicExpression::Type::Value &&
             expression.GetValueType() == LogicExpression::ValueType::Enum) {
             std::string identifier = expression.ToString();
             auto it = randomizerEventMap.find(identifier);
@@ -791,11 +1034,11 @@ static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTabl
                     ImGui::SetTooltip("Show Event Logic");
                 }
             }
-        }
+        }*/
     }
 
     ImGui::TableNextColumn();
-    DrawCondition(expression);
+    expression.Draw();
     if (!row.ErrorMessage.empty()) {
         ImGui::TextWrapped("%s", row.ErrorMessage.c_str());
     }

@@ -49,15 +49,34 @@ class LogicExpression {
 
     typedef value_t (*function_t)(Scope&);
 
-    std::vector<LogicExpression*> GetChildren() const;
-
     virtual EvalResult Evaluate(Scope& scope) const = 0;
 
-    virtual void Draw() const = 0;
+    virtual std::string ToString() const = 0;
+
+    virtual void Draw() const {
+        ImGui::TextWrapped("%s", ToString().c_str());
+    }
+
+    void ResolveChildren();
 
   protected:
     function_t _function;
-    std::vector<index_t> _childrenIndexes;
+
+    union ix {
+        index_t index;
+        LogicExpression* expression;
+
+        ix(index_t value) : index(value) {}
+    };
+
+    std::vector<ix> _children;
+    bool _childrenResolved = false;
+
+  public:
+    auto GetChildren() const {
+        assert(_childrenResolved);
+        return _children | std::views::transform([](const ix& child) { return child.expression; });
+    }
 };
 
 struct EvalResult {
@@ -105,8 +124,8 @@ static T ToInt(const std::optional<LogicExpression::value_t>& value) {
 
 class AndExpression : public LogicExpression {
   public:
-    AndExpression(std::vector<index_t> childrenIndexes) {
-        _childrenIndexes = childrenIndexes;
+    AndExpression(std::vector<index_t> children) {
+        _children.insert(_children.end(), children.begin(), children.end());
     }
 
     EvalResult Evaluate(Scope& scope) const override {
@@ -128,14 +147,23 @@ class AndExpression : public LogicExpression {
         return std::move(evalResult);
     }
 
-    void Draw() const override {
+    std::string ToString() const {
+        std::string str;
+        auto children = GetChildren();
+        for (size_t i = 0; i < children.size(); i++) {
+            str += "(" + children[i]->ToString() + ")";
+            if (i < children.size() - 1) {
+                str += " and ";
+            }
+        }
+        return str;
     }
 };
 
 class OrExpression : public LogicExpression {
   public:
-    OrExpression(std::vector<index_t> childrenIndexes) {
-        _childrenIndexes = childrenIndexes;
+    OrExpression(std::vector<index_t> children) {
+        _children.insert(_children.end(), children.begin(), children.end());
     }
 
     EvalResult Evaluate(Scope& scope) const override {
@@ -157,14 +185,23 @@ class OrExpression : public LogicExpression {
         return std::move(evalResult);
     }
 
-    void Draw() const override {
+    std::string ToString() const {
+        std::string str;
+        auto children = GetChildren();
+        for (size_t i = 0; i < children.size(); i++) {
+            str += "(" + children[i]->ToString() + ")";
+            if (i < children.size() - 1) {
+                str += " or ";
+            }
+        }
+        return str;
     }
 };
 
 class NotExpression : public LogicExpression {
   public:
     NotExpression(index_t childIndex) {
-        _childrenIndexes = { childIndex };
+        _children = { childIndex };
     }
 
     EvalResult Evaluate(Scope& scope) const override {
@@ -179,7 +216,8 @@ class NotExpression : public LogicExpression {
         return std::move(evalResult);
     }
 
-    void Draw() const override {
+    std::string ToString() const {
+        return "not (" + GetChildren()[0]->ToString() + ")";
     }
 };
 
@@ -187,7 +225,7 @@ class ComparisonExpression : public LogicExpression {
   public:
     ComparisonExpression(std::string_view operation, index_t left, index_t right) {
         _operation = operation;
-        _childrenIndexes = { left, right };
+        _children = { left, right };
     }
 
     EvalResult Evaluate(Scope& scope) const override {
@@ -240,7 +278,9 @@ class ComparisonExpression : public LogicExpression {
         return std::move(evalResult);
     }
 
-    void Draw() const override {
+    std::string ToString() const {
+        auto children = GetChildren();
+        return "(" + children[0]->ToString() + ") " + std::string(_operation) + " (" + children[1]->ToString() + ")";
     }
 
   private:
@@ -252,8 +292,8 @@ class FunctionCallExpression : public LogicExpression {
     FunctionCallExpression(std::string_view functionName, std::vector<std::string_view> parameterNames, std::vector<index_t> parameters, index_t definition) {
         _functionName = functionName;
         _parameterNames = parameterNames;
-        _childrenIndexes.insert(_childrenIndexes.end(), parameters.begin(), parameters.end());
-        _childrenIndexes.push_back(definition);
+        _children.insert(_children.end(), parameters.begin(), parameters.end());
+        _children.push_back(definition);
     }
 
     EvalResult Evaluate(Scope& scope) const override {
@@ -280,7 +320,17 @@ class FunctionCallExpression : public LogicExpression {
         return std::move(evalResult);
     }
 
-    void Draw() const override {
+    std::string ToString() const {
+        auto children = GetChildren();
+        std::string str = std::string(_functionName) + "(";
+        for (size_t i = 0; _parameterNames.size(); i++) {
+            str += std::string(_parameterNames[i]) + ": " + children[i]->ToString();
+            if (i < _parameterNames.size() - 1) {
+                str += ", ";
+            }
+        }
+        str += ")";
+        return str;
     }
 
   private:
@@ -294,7 +344,7 @@ class ExternFunctionCallExpression : public LogicExpression {
         _function = function;
         _functionName = functionName;
         _parameterNames = parameterNames;
-        _childrenIndexes.insert(_childrenIndexes.end(), parameters.begin(), parameters.end());
+        _children.insert(_children.end(), parameters.begin(), parameters.end());
     }
 
     EvalResult Evaluate(Scope& scope) const override {
@@ -318,7 +368,17 @@ class ExternFunctionCallExpression : public LogicExpression {
         return std::move(evalResult);
     }
 
-    void Draw() const override {
+    std::string ToString() const {
+        auto children = GetChildren();
+        std::string str = std::string(_functionName) + "(";
+        for (size_t i = 0; i < _parameterNames.size(); i++) {
+            str += std::string(_parameterNames[i]) + ": " + children[i]->ToString();
+            if (i < _parameterNames.size() - 1) {
+                str += ", ";
+            }
+        }
+        str += ")";
+        return str;
     }
 
   private:
@@ -330,6 +390,7 @@ class ValueExpression : public LogicExpression {
   public:
     ValueExpression(function_t function, std::string_view expression, bool isEvent) {
         _function = function;
+        _expression = expression;
         _isEvent = isEvent;
     }
 
@@ -340,18 +401,20 @@ class ValueExpression : public LogicExpression {
         return std::move(evalResult);
     }
 
-    void Draw() const override {
+    std::string ToString() const {
+        return std::string(_expression);
     }
 
   private:
     function_t _function;
+    std::string_view _expression;
     bool _isEvent;
 };
 
 class TernaryExpression : public LogicExpression {
   public:
     TernaryExpression(index_t condition, index_t trueBranch, index_t falseBranch) {
-        _childrenIndexes = { condition, trueBranch, falseBranch };
+        _children = { condition, trueBranch, falseBranch };
     }
 
     EvalResult Evaluate(Scope& scope) const override {
@@ -370,7 +433,10 @@ class TernaryExpression : public LogicExpression {
         return std::move(evalResult);
     }
 
-    void Draw() const override {
+    std::string ToString() const {
+        auto children = GetChildren();
+        return "(" + children[0]->ToString() + ") ? (" + children[1]->ToString() + ") : (" + children[2]->ToString() +
+               ")";
     }
 };
 
@@ -415,13 +481,27 @@ struct LogicLibrary {
 };
 // clang-format on
 
-std::vector<LogicExpression*> LogicExpression::GetChildren() const {
-    std::vector<LogicExpression*> children;
-    children.reserve(_childrenIndexes.size());
-    for (auto index : _childrenIndexes) {
-        children.push_back(LogicLibrary::Expressions[index]);
+//std::vector<LogicExpression*> LogicExpression::GetChildren() const {
+//    std::vector<LogicExpression*> children;
+//    children.reserve(_children.size());
+//    for (auto index : _children) {
+//        children.push_back(LogicLibrary::Expressions[index]);
+//    }
+//    return std::move(children);
+//}
+
+void LogicExpression::ResolveChildren() {
+    if (_childrenResolved) {
+        return;
     }
-    return std::move(children);
+
+    for (auto& child : _children) {
+        const auto index = child.index;
+        assert(index < LogicLibrary::Expressions.size());
+        child.expression = LogicLibrary::Expressions[index];
+    }
+
+    _childrenResolved = true;
 }
 
 std::map<std::string, std::shared_ptr<LogicExpression>> expressions;
@@ -1321,7 +1401,9 @@ void LogicTrackerWindow::DrawElement() {
 }
 
 void LogicTrackerWindow::InitElement() {
-    return;
+    for (auto* expression : LogicLibrary::Expressions) {
+        expression->ResolveChildren();
+    }
 }
 
 void LogicTrackerWindow::UpdateElement() {

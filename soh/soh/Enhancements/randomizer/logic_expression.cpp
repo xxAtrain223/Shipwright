@@ -5,6 +5,7 @@
 #include <array>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 
 static auto fontColors = std::to_array({
     ImVec4(0.5f, 0.5f, 1.0f, 1.0f), // Blue
@@ -38,6 +39,10 @@ static bool NeedsParentheses(const LogicExpression* parent, const LogicExpressio
                (dynamic_cast<const OrExpression*>(parent) && dynamic_cast<const AndExpression*>(child));
     }
 
+    if (dynamic_cast<const TernaryExpression*>(parent)) {
+        return childIsBinary || childIsComparison || childIsTernary;
+    }
+
     return false;
 }
 
@@ -54,14 +59,72 @@ void LogicExpression::ResolveChildren() {
         return;
     }
 
+    auto expressions = GetExpressions();
     for (auto& child : _children) {
         const auto index = child.index;
-        assert(index < LogicLibrary::Expressions.size());
-        child.expression = GetExpressions()[index];
+        assert(index < expressions.size());
+        child.expression = expressions[index];
     }
 
     _childrenResolved = true;
 }
+
+void VariableScope::push(std::string_view variableName, value_t value) {
+    auto [it, inserted] = variables.try_emplace(variableName);
+    try {
+        it->second.push(value);
+    } catch (...) {
+        if (inserted) {
+            variables.erase(it);
+        }
+        throw;
+    }
+}
+
+value_t VariableScope::get(std::string_view variableName) const {
+    return variables.at(variableName).top();
+}
+
+void VariableScope::pop(std::string_view variableName) {
+    auto& stack = variables.at(variableName);
+    stack.pop();
+    if (stack.empty()) {
+        variables.erase(variableName);
+    }
+}
+
+VariableScope::~VariableScope() {
+    assert(variables.empty());
+}
+
+namespace {
+class ScopedParameterBindings {
+  public:
+    ScopedParameterBindings(VariableScope& scope, std::span<const std::string_view> names)
+        : _scope(scope), _names(names) {
+    }
+
+    ScopedParameterBindings(const ScopedParameterBindings&) = delete;
+    ScopedParameterBindings& operator=(const ScopedParameterBindings&) = delete;
+
+    void Push(value_t value) {
+        assert(_boundCount < _names.size());
+        _scope.push(_names[_boundCount], value);
+        ++_boundCount;
+    }
+
+    ~ScopedParameterBindings() noexcept {
+        while (_boundCount > 0) {
+            _scope.pop(_names[--_boundCount]);
+        }
+    }
+
+  private:
+    VariableScope& _scope;
+    std::span<const std::string_view> _names;
+    size_t _boundCount = 0;
+};
+} // namespace
 
 static void DrawColoredWrappedText(const std::vector<std::pair<ImVec4, std::string>>& segments) {
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
@@ -117,7 +180,7 @@ void BinaryExpression::Draw() const {
     std::vector<std::pair<ImVec4, std::string>> segments;
     auto children = GetChildren();
     for (size_t i = 0; i < children.size(); i++) {
-        segments.emplace_back(fontColors[i % fontColors.size()], children[i]->ToString());
+        segments.emplace_back(fontColors[i % fontColors.size()], WrapParentheses(this, children[i]));
         if (i < children.size() - 1) {
             segments.emplace_back(ImGui::GetStyleColorVec4(ImGuiCol_Text), " " + GetOperation() + " ");
         }
@@ -205,16 +268,16 @@ EvalResult NotExpression::Evaluate(VariableScope& scope) const {
     evalResult.Children.push_back(childResult);
     evalResult.Result = !ToBool(childResult.Result);
 
-    return std::move(evalResult);
+    return evalResult;
 }
 
 std::string NotExpression::ToString() const {
-    return "not " + GetChildren()[0]->ToString();
+    return "not " + WrapParentheses(this, GetChildren()[0]);
 }
 
 void NotExpression::Draw() const {
     DrawColoredWrappedText(
-        { { ImGui::GetStyleColorVec4(ImGuiCol_Text), "not " }, { fontColors[0], GetChildren()[0]->ToString() } });
+        { { ImGui::GetStyleColorVec4(ImGuiCol_Text), "not " }, { fontColors[0], WrapParentheses(this, GetChildren()[0]) } });
 }
 
 ComparisonExpression::ComparisonExpression(std::string_view operation, index_t left, index_t right) {
@@ -260,7 +323,7 @@ EvalResult ComparisonExpression::Evaluate(VariableScope& scope) const {
 
     evalResult.Result = std::visit(compare, leftResult.Result, rightResult.Result);
 
-    return std::move(evalResult);
+    return evalResult;
 }
 
 std::string ComparisonExpression::ToString() const {
@@ -272,9 +335,9 @@ std::string ComparisonExpression::ToString() const {
 void ComparisonExpression::Draw() const {
     auto children = GetChildren();
     DrawColoredWrappedText({
-        { fontColors[0], children[0]->ToString() },
+        { fontColors[0], WrapParentheses(this, children[0]) },
         { ImGui::GetStyleColorVec4(ImGuiCol_Text), " " + std::string(_operation) + " " },
-        { fontColors[1], children[1]->ToString() },
+        { fontColors[1], WrapParentheses(this, children[1]) },
     });
 }
 
@@ -298,23 +361,24 @@ EvalResult FunctionCallExpression::Evaluate(VariableScope& scope) const {
     evalResult.Expression = this;
 
     auto children = GetChildren();
+    std::vector<value_t> parameterValues(_parameterNames.size());
 
     for (size_t i = 0; i < _parameterNames.size(); i++) {
         auto childResult = children[i]->Evaluate(scope);
-        scope.push(_parameterNames[i], childResult.Result);
+        parameterValues[i] = childResult.Result;
         evalResult.Children.push_back(childResult);
+    }
+
+    ScopedParameterBindings bindings(scope, _parameterNames);
+    for (const auto& value : parameterValues) {
+        bindings.Push(value);
     }
 
     auto functionResult = children.back()->Evaluate(scope);
     evalResult.Children.push_back(functionResult);
-
     evalResult.Result = functionResult.Result;
 
-    for (auto parameterName : _parameterNames) {
-        scope.pop(parameterName);
-    }
-
-    return std::move(evalResult);
+    return evalResult;
 }
 
 std::string FunctionCallExpression::ToString() const {
@@ -358,20 +422,22 @@ EvalResult ExternFunctionCallExpression::Evaluate(VariableScope& scope) const {
     evalResult.Expression = this;
 
     auto children = GetChildren();
+    std::vector<value_t> parameterValues(_parameterNames.size());
 
     for (size_t i = 0; i < _parameterNames.size(); i++) {
         auto childResult = children[i]->Evaluate(scope);
-        scope.push(_parameterNames[i], childResult.Result);
+        parameterValues[i] = childResult.Result;
         evalResult.Children.push_back(childResult);
+    }
+
+    ScopedParameterBindings bindings(scope, _parameterNames);
+    for (const auto& value : parameterValues) {
+        bindings.Push(value);
     }
 
     evalResult.Result = _function(scope);
 
-    for (auto parameterName : _parameterNames) {
-        scope.pop(parameterName);
-    }
-
-    return std::move(evalResult);
+    return evalResult;
 }
 
 ValueExpression::ValueExpression(function_t function, std::string_view expression, bool isEvent) {
@@ -384,7 +450,7 @@ EvalResult ValueExpression::Evaluate(VariableScope& scope) const {
     EvalResult evalResult;
     evalResult.Expression = this;
     evalResult.Result = _function(scope);
-    return std::move(evalResult);
+    return evalResult;
 }
 
 std::string ValueExpression::ToString() const {
@@ -413,7 +479,7 @@ EvalResult TernaryExpression::Evaluate(VariableScope& scope) const {
     evalResult.Children.push_back(branchResult);
     evalResult.Result = branchResult.Result;
 
-    return std::move(evalResult);
+    return evalResult;
 }
 
 std::string TernaryExpression::ToString() const {
@@ -425,10 +491,10 @@ std::string TernaryExpression::ToString() const {
 void TernaryExpression::Draw() const {
     auto children = GetChildren();
     DrawColoredWrappedText({
-        { fontColors[0], children[0]->ToString() },
+        { fontColors[0], WrapParentheses(this, children[0]) },
         { ImGui::GetStyleColorVec4(ImGuiCol_Text), " ? " },
-        { fontColors[1], children[1]->ToString() },
+        { fontColors[1], WrapParentheses(this, children[1]) },
         { ImGui::GetStyleColorVec4(ImGuiCol_Text), " : " },
-        { fontColors[2], children[2]->ToString() },
+        { fontColors[2], WrapParentheses(this, children[2]) }
     });
 }

@@ -1,19 +1,23 @@
 #pragma once
 
 #include <cassert>
+#include <cstdint>
 #include <optional>
 #include <ranges>
+#include <span>
 #include <stack>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
 #include <variant>
+#include <vector>
 
 struct VariableScope;
 
 using index_t = uint16_t;
 using value_t = std::variant<bool, int8_t, int16_t, int32_t, uint8_t, uint16_t, uint32_t>;
-typedef value_t (*function_t)(VariableScope&);
+using function_t = value_t(*)(VariableScope&);
 
 static bool ToBool(const std::optional<value_t>& value) {
     if (!value.has_value()) {
@@ -65,8 +69,6 @@ class LogicExpression {
     void ResolveChildren();
 
   protected:
-    function_t _function;
-
     union ix {
         index_t index;
         LogicExpression* expression;
@@ -91,29 +93,14 @@ struct EvalResult {
     std::vector<EvalResult> Children;
 };
 
-class VariableScope {
-  public:
-    void push(std::string_view variableName, value_t value) {
-        if (!variables.contains(variableName)) {
-            variables[variableName] = {};
-        }
-        variables[variableName].push(value);
-    }
+struct VariableScope {
+    void push(std::string_view variableName, value_t value);
 
-    value_t get(std::string_view variableName) const {
-        return variables.at(variableName).top();
-    }
+    value_t get(std::string_view variableName) const;
 
-    void pop(std::string_view variableName) {
-        auto& stack = variables.at(variableName);
-        if (stack.empty()) {
-            variables.erase(variableName);
-        }
-    }
+    void pop(std::string_view variableName);
 
-    ~VariableScope() {
-        assert(variables.empty());
-    }
+    ~VariableScope();
 
   private:
     std::unordered_map<std::string_view, std::stack<value_t>> variables;
@@ -214,6 +201,9 @@ class ExternFunctionCallExpression : public FunctionCallExpression {
                                  std::vector<std::string_view> parameterNames, std::vector<index_t> parameters);
 
     EvalResult Evaluate(VariableScope& scope) const override;
+
+  private:
+    function_t _function;
 };
 
 class ValueExpression : public LogicExpression {

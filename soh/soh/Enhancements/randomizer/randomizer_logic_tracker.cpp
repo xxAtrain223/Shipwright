@@ -3,6 +3,7 @@
 #include "location_access.h"
 #include "entrance.h"
 #include "../../OTRGlobals.h"
+#include "logic_expression.h"
 
 #include <deque>
 #include <stack>
@@ -10,602 +11,48 @@
 
 #include "logic/generated/soh/functions.gen.h"
 
-struct EvalResult;
-
-typedef uint16_t index_t;
-constexpr index_t INVALID_INDEX = -1;
-
-
-static auto fontColors = std::to_array({
-    ImVec4(0.5f, 0.5f, 1.0f, 1.0f), // Blue
-    ImVec4(0.5f, 1.0f, 0.5f, 1.0f), // Green
-    ImVec4(1.0f, 0.5f, 0.5f, 1.0f), // Red
-    ImVec4(1.0f, 1.0f, 0.5f, 1.0f), // Yellow
-    ImVec4(1.0f, 0.5f, 1.0f, 1.0f), // Magenta
-    ImVec4(0.5f, 1.0f, 1.0f, 1.0f), // Cyan
-});
-
-class LogicExpression {
-  public:
-    using value_t = std::variant<bool, int8_t, int16_t, int32_t, uint8_t, uint16_t, uint32_t>;
-
-    class Scope {
-      public:
-        void push(std::string_view variableName, value_t value) {
-            if (!variables.contains(variableName)) {
-                variables[variableName] = {};
-            }
-            variables[variableName].push(value);
-        }
-
-        value_t get(std::string_view variableName) const {
-            return variables.at(variableName).top();
-        }
-
-        void pop(std::string_view variableName) {
-            auto& stack = variables.at(variableName);
-            if (stack.empty()) {
-                variables.erase(variableName);
-            }
-        }
-
-        ~Scope() {
-            assert(variables.empty());
-        }
-
-      private:
-        std::unordered_map<std::string_view, std::stack<value_t>> variables;
-    };
-
-    typedef value_t (*function_t)(Scope&);
-
-    virtual EvalResult Evaluate(Scope& scope) const = 0;
-
-    virtual std::string ToString() const = 0;
-
-    virtual void Draw() const {
-        ImGui::TextWrapped("%s", ToString().c_str());
-    }
-
-    void ResolveChildren();
-
-  protected:
-    function_t _function;
-
-    union ix {
-        index_t index;
-        LogicExpression* expression;
-
-        ix(index_t value) : index(value) {}
-    };
-
-    std::vector<ix> _children;
-    bool _childrenResolved = false;
-
-  public:
-    auto GetChildren() const {
-        assert(_childrenResolved);
-        return _children | std::views::transform([](const ix& child) { return child.expression; });
-    }
-};
-
-struct EvalResult {
-    const LogicExpression* Expression;
-    LogicExpression::value_t Result;
-    std::vector<EvalResult> Children;
-};
-
-static bool ToBool(const std::optional<LogicExpression::value_t>& value) {
-    if (!value.has_value()) {
-        return false;
-    }
-    return std::visit(
-        [](auto v) -> bool {
-            using V = std::decay_t<decltype(v)>;
-            if constexpr (std::is_same_v<V, bool>) {
-                return v;
-            } else if constexpr (std::is_integral_v<V>) {
-                return v != 0;
-            } else {
-                throw std::bad_variant_access();
-            }
-        },
-        value.value());
-}
-
-template <typename T>
-static T ToInt(const std::optional<LogicExpression::value_t>& value) {
-    if (!value.has_value()) {
-        return 0;
-    }
-    return std::visit(
-        [](auto v) -> T {
-            using V = std::decay_t<decltype(v)>;
-            if constexpr (std::is_same_v<V, bool>) {
-                return v ? 1 : 0;
-            } else if constexpr (std::is_integral_v<V>) {
-                return static_cast<T>(v);
-            } else {
-                throw std::bad_variant_access();
-            }
-        },
-        value.value());
-}
-
-static void DrawColoredWrappedText(const std::vector<std::pair<ImVec4, std::string>>& segments) {
-    ImDrawList* draw_list = ImGui::GetWindowDrawList();
-    ImVec2 pos = ImGui::GetCursorScreenPos();
-    float wrapWidth = ImGui::GetContentRegionAvail().x;
-    float x = pos.x;
-    float y = pos.y;
-    float startX = x;
-    ImFont* font = ImGui::GetFont();
-    float fontSize = ImGui::GetFontSize();
-
-    for (const auto& [color, text] : segments) {
-        std::istringstream iss(text + " ");
-        std::string word;
-        bool firstWordInSegment = true;
-        while (std::getline(iss, word, ' ')) {
-            std::string toDraw = word;
-            if (!firstWordInSegment) {
-                toDraw = " " + word;
-            }
-            ImVec2 textSize = ImGui::CalcTextSize(toDraw.c_str());
-            if (x + textSize.x > startX + wrapWidth && x > startX) {
-                x = startX;
-                y += fontSize;
-                toDraw = word;
-                textSize = ImGui::CalcTextSize(toDraw.c_str());
-            }
-            draw_list->AddText(font, fontSize, ImVec2(x, y), ImGui::ColorConvertFloat4ToU32(color), toDraw.c_str());
-            x += textSize.x;
-            firstWordInSegment = false;
-        }
-    }
-    ImGui::SetCursorScreenPos(ImVec2(pos.x, y + fontSize));
-}
-
-class BinaryExpression : public LogicExpression {
-  public:
-    BinaryExpression(std::vector<index_t> children) {
-        _children.insert(_children.end(), children.begin(), children.end());
-    }
-
-    std::string ToString() const {
-        std::string str;
-        auto children = GetChildren();
-        for (size_t i = 0; i < children.size(); i++) {
-            str += "(" + children[i]->ToString() + ")";
-            if (i < children.size() - 1) {
-                str += " " + GetOperation() + " ";
-            }
-        }
-        return str;
-    }
-
-    void Draw() const override {
-        std::vector<std::pair<ImVec4, std::string>> segments;
-        auto children = GetChildren();
-        for (size_t i = 0; i < children.size(); i++) {
-            segments.emplace_back(fontColors[i % fontColors.size()], children[i]->ToString());
-            if (i < children.size() - 1) {
-                segments.emplace_back(ImGui::GetStyleColorVec4(ImGuiCol_Text), " " + GetOperation() + " ");
-            }
-        }
-        DrawColoredWrappedText(segments);
-    }
-
-    EvalResult Evaluate(Scope& scope) const override {
-        auto children = GetChildren();
-        assert(children.size() >= 2);
-
-        EvalResult evalResult{};
-        evalResult.Expression = this;
-        evalResult.Children.push_back(children[0]->Evaluate(scope));
-
-        value_t value = evalResult.Children.back().Result;
-
-        for (size_t i = 1; i < children.size(); ++i) {
-            value_t shortCircuitResult;
-            if (TryShortCircuit(value, shortCircuitResult)) {
-                value = shortCircuitResult;
-                break;
-            }
-
-            evalResult.Children.push_back(children[i]->Evaluate(scope));
-            value = Combine(value, evalResult.Children.back().Result);
-        }
-
-        evalResult.Result = value;
-        return evalResult;
-    }
-
-  protected:
-    virtual bool TryShortCircuit(const value_t&, value_t&) const {
-        return false;
-    }
-
-    virtual value_t Combine(const value_t& left, const value_t& right) const = 0;
-
-    virtual std::string GetOperation() const = 0;
-};
-
-class AndExpression : public BinaryExpression {
-  public:
-    AndExpression(std::vector<index_t> children) : BinaryExpression(children) {}
-
-  protected:
-    bool TryShortCircuit(const value_t& left, value_t& result) const override {
-        if (!ToBool(left)) {
-            result = false;
-            return true;
-        }
-        return false;
-    }
-
-    value_t Combine(const value_t& left, const value_t& right) const override {
-        return ToBool(left) && ToBool(right);
-    }
-
-    std::string GetOperation() const override {
-        return "and";
-    }
-};
-
-class OrExpression : public BinaryExpression {
-  public:
-    OrExpression(std::vector<index_t> children) : BinaryExpression(children) {}
-
-  protected:
-    bool TryShortCircuit(const value_t& left, value_t& result) const override {
-        if (ToBool(left)) {
-            result = true;
-            return true;
-        }
-        return false;
-    }
-
-    value_t Combine(const value_t& left, const value_t& right) const override {
-        return ToBool(left) || ToBool(right);
-    }
-
-    std::string GetOperation() const override {
-        return "or";
-    }
-};
-
-class NotExpression : public LogicExpression {
-  public:
-    NotExpression(index_t childIndex) {
-        _children = { childIndex };
-    }
-
-    EvalResult Evaluate(Scope& scope) const override {
-        EvalResult evalResult;
-        evalResult.Expression = this;
-
-        auto child = GetChildren()[0];
-        auto childResult = child->Evaluate(scope);
-        evalResult.Children.push_back(childResult);
-        evalResult.Result = !ToBool(childResult.Result);
-
-        return std::move(evalResult);
-    }
-
-    std::string ToString() const {
-        return "not " + GetChildren()[0]->ToString();
-    }
-
-    void Draw() const override {
-        DrawColoredWrappedText(
-            { { ImGui::GetStyleColorVec4(ImGuiCol_Text), "not " }, { fontColors[0], GetChildren()[0]->ToString() } });
-    }
-};
-
-class ComparisonExpression : public LogicExpression {
-  public:
-    ComparisonExpression(std::string_view operation, index_t left, index_t right) {
-        _operation = operation;
-        _children = { left, right };
-    }
-
-    EvalResult Evaluate(Scope& scope) const override {
-        EvalResult evalResult;
-        evalResult.Expression = this;
-
-        auto children = GetChildren();
-
-        auto left = children[0];
-        auto leftResult = left->Evaluate(scope);
-        evalResult.Children.push_back(leftResult);
-
-        auto right = children[1];
-        auto rightResult = right->Evaluate(scope);
-        evalResult.Children.push_back(rightResult);
-
-        auto compare = [&](auto a, auto b) -> bool {
-            using ComparisonType = decltype(+a + +b);
-
-            const auto l = static_cast<ComparisonType>(a);
-            const auto r = static_cast<ComparisonType>(b);
-
-            if (_operation == "==") return l == r;
-            if (_operation == "!=") return l != r;
-            if (_operation == "<")  return l < r;
-            if (_operation == "<=") return l <= r;
-            if (_operation == ">")  return l > r;
-            if (_operation == ">=") return l >= r;
-
-            throw std::runtime_error("Unknown comparison operator: " +
-                                     std::string(_operation));
-        };
-
-        evalResult.Result = std::visit(compare, leftResult.Result, rightResult.Result);
-
-        return std::move(evalResult);
-    }
-
-    std::string ToString() const {
-        auto children = GetChildren();
-        return "(" + children[0]->ToString() + ") " + std::string(_operation) + " (" + children[1]->ToString() + ")";
-    }
-
-    void Draw() const override {
-        auto children = GetChildren();
-        DrawColoredWrappedText({
-            { fontColors[0], children[0]->ToString() },
-            { ImGui::GetStyleColorVec4(ImGuiCol_Text), " " + std::string(_operation) + " " },
-            { fontColors[1], children[1]->ToString() },
-        });
-    }
-
-  private:
-    std::string_view _operation;
-};
-
-class FunctionCallExpression : public LogicExpression {
-  protected:
-    FunctionCallExpression(std::string_view functionName, std::vector<std::string_view> parameterNames,
-                           std::vector<index_t> parameters) {
-        _functionName = functionName;
-        _parameterNames = parameterNames;
-        _children.insert(_children.end(), parameters.begin(), parameters.end());
-    }
-
-  public:
-    FunctionCallExpression(std::string_view functionName, std::vector<std::string_view> parameterNames,
-                           std::vector<index_t> parameters, index_t definition)
-        : FunctionCallExpression(functionName, parameterNames, parameters) {
-        _children.push_back(definition);
-    }
-
-    EvalResult Evaluate(Scope& scope) const override {
-        EvalResult evalResult;
-        evalResult.Expression = this;
-
-        auto children = GetChildren();
-
-        for (size_t i = 0; i < _parameterNames.size(); i++) {
-            auto childResult = children[i]->Evaluate(scope);
-            scope.push(_parameterNames[i], childResult.Result);
-            evalResult.Children.push_back(childResult);
-        }
-
-        auto functionResult = children.back()->Evaluate(scope);
-        evalResult.Children.push_back(functionResult);
-
-        evalResult.Result = functionResult.Result;
-
-        for (auto parameterName : _parameterNames) {
-            scope.pop(parameterName);
-        }
-
-        return std::move(evalResult);
-    }
-
-    std::string ToString() const {
-        auto children = GetChildren();
-        std::string str = std::string(_functionName) + "(";
-        for (size_t i = 0; i < _parameterNames.size(); i++) {
-            str += std::string(_parameterNames[i]) + ": " + children[i]->ToString();
-            if (i < _parameterNames.size() - 1) {
-                str += ", ";
-            }
-        }
-        str += ")";
-        return str;
-    }
-
-    void Draw() const override {
-        auto children = GetChildren();
-        std::vector<std::pair<ImVec4, std::string>> segments;
-        segments.emplace_back(fontColors[0], _functionName);
-        segments.emplace_back(ImGui::GetStyleColorVec4(ImGuiCol_Text), "(");
-        for (size_t i = 0; i < _parameterNames.size(); i++) {
-            segments.emplace_back(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled),
-                                  std::string(_parameterNames[i]) + ": ");
-            segments.emplace_back(fontColors[(i + 1) % fontColors.size()], children[i]->ToString());
-            if (i < _parameterNames.size() - 1) {
-                segments.emplace_back(ImGui::GetStyleColorVec4(ImGuiCol_Text), ", ");
-            }
-        }
-        segments.emplace_back(ImGui::GetStyleColorVec4(ImGuiCol_Text), ")");
-        DrawColoredWrappedText(segments);
-    }
-
-  protected:
-    std::string_view _functionName;
-    std::vector<std::string_view> _parameterNames;
-};
-
-class ExternFunctionCallExpression : public FunctionCallExpression {
-  public:
-    ExternFunctionCallExpression(function_t function, std::string_view functionName,
-                                 std::vector<std::string_view> parameterNames, std::vector<index_t> parameters)
-        : FunctionCallExpression(functionName, parameterNames, parameters) {
-        _function = function;
-    }
-
-    EvalResult Evaluate(Scope& scope) const override {
-        EvalResult evalResult;
-        evalResult.Expression = this;
-
-        auto children = GetChildren();
-
-        for (size_t i = 0; i < _parameterNames.size(); i++) {
-            auto childResult = children[i]->Evaluate(scope);
-            scope.push(_parameterNames[i], childResult.Result);
-            evalResult.Children.push_back(childResult);
-        }
-
-        evalResult.Result = _function(scope);
-
-        for (auto parameterName : _parameterNames) {
-            scope.pop(parameterName);
-        }
-
-        return std::move(evalResult);
-    }
-};
-
-class ValueExpression : public LogicExpression {
-  public:
-    ValueExpression(function_t function, std::string_view expression, bool isEvent) {
-        _function = function;
-        _expression = expression;
-        _isEvent = isEvent;
-    }
-
-    EvalResult Evaluate(Scope& scope) const override {
-        EvalResult evalResult;
-        evalResult.Expression = this;
-        evalResult.Result = _function(scope);
-        return std::move(evalResult);
-    }
-
-    std::string ToString() const {
-        return std::string(_expression);
-    }
-
-    void Draw() const override {
-        DrawColoredWrappedText({ { fontColors[0], std::string(_expression) } });
-    }
-
-  private:
-    function_t _function;
-    std::string_view _expression;
-    bool _isEvent;
-};
-
-class TernaryExpression : public LogicExpression {
-  public:
-    TernaryExpression(index_t condition, index_t trueBranch, index_t falseBranch) {
-        _children = { condition, trueBranch, falseBranch };
-    }
-
-    EvalResult Evaluate(Scope& scope) const override {
-        EvalResult evalResult;
-        evalResult.Expression = this;
-
-        auto children = GetChildren();
-
-        auto conditionResult = children[0]->Evaluate(scope);
-        evalResult.Children.push_back(conditionResult);
-
-        auto branchResult =
-            ToBool(conditionResult.Result) ? children[1]->Evaluate(scope) : children[2]->Evaluate(scope);
-        evalResult.Children.push_back(branchResult);
-        evalResult.Result = branchResult.Result;
-
-        return std::move(evalResult);
-    }
-
-    std::string ToString() const {
-        auto children = GetChildren();
-        return "(" + children[0]->ToString() + ") ? (" + children[1]->ToString() + ") : (" + children[2]->ToString() +
-               ")";
-    }
-
-    void Draw() const override {
-        auto children = GetChildren();
-        DrawColoredWrappedText({
-            { fontColors[0], children[0]->ToString() },
-            { ImGui::GetStyleColorVec4(ImGuiCol_Text), " ? " },
-            { fontColors[1], children[1]->ToString() },
-            { ImGui::GetStyleColorVec4(ImGuiCol_Text), " : " },
-            { fontColors[2], children[2]->ToString() },
-        });
-    }
-};
-
-static LogicExpression::value_t has_adapter(LogicExpression::Scope& scope) {
-    auto item = static_cast<RandomizerGet>(ToInt<uint32_t>(scope.get("item")));
-    return static_cast<LogicExpression::value_t>(has(item));
-}
-
-static LogicExpression::value_t check_price_adapter(LogicExpression::Scope& scope) {
-    return static_cast<LogicExpression::value_t>(check_price());
-}
-
 // clang-format off
-struct LogicLibrary {
-    static inline auto Expressions = std::to_array<LogicExpression*>({
+static value_t has_adapter(VariableScope& scope) {
+    auto item = static_cast<RandomizerGet>(ToInt<uint32_t>(scope.get("item")));
+    return static_cast<value_t>(has(item));
+}
+
+static value_t check_price_adapter(VariableScope& scope) {
+    return static_cast<value_t>(check_price());
+}
+
+std::span<LogicExpression* const> GetExpressions() {
+    static auto expressions = std::to_array<LogicExpression*>({
     /* 0*/ new AndExpression({1, 3}),
     /* 1*/ new ExternFunctionCallExpression(has_adapter, "has", {"item"}, {2}),
-    /* 2*/ new ValueExpression([](LogicExpression::Scope& scope){ return static_cast<LogicExpression::value_t>(RG_SPEAK_KOKIRI); }, "RG_SPEAK_KOKIRI", false),
+    /* 2*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_SPEAK_KOKIRI); }, "RG_SPEAK_KOKIRI", false),
     /* 3*/ new ComparisonExpression("<=", 4, 5),
     /* 4*/ new ExternFunctionCallExpression(check_price_adapter, "check_price", {}, {}),
     /* 5*/ new FunctionCallExpression("wallet_capacity", {}, {}, 6),
     /* 6*/ new TernaryExpression(7, 9, 10),
     /* 7*/ new ExternFunctionCallExpression(has_adapter, "has",  {"item"}, {8}),
-    /* 8*/ new ValueExpression([](LogicExpression::Scope& scope){ return static_cast<LogicExpression::value_t>(RG_TYCOON_WALLET); }, "RG_TYCOON_WALLET", false),
-    /* 9*/ new ValueExpression([](LogicExpression::Scope& scope){ return static_cast<LogicExpression::value_t>(999); }, "999", false),
+    /* 8*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_TYCOON_WALLET); }, "RG_TYCOON_WALLET", false),
+    /* 9*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(999); }, "999", false),
     /*10*/ new TernaryExpression(11, 13, 14),
     /*11*/ new ExternFunctionCallExpression(has_adapter, "has",  {"item"}, {12}),
-    /*12*/ new ValueExpression([](LogicExpression::Scope& scope){ return static_cast<LogicExpression::value_t>(RG_GIANT_WALLET); }, "RG_GIANT_WALLET", false),
-    /*13*/ new ValueExpression([](LogicExpression::Scope& scope){ return static_cast<LogicExpression::value_t>(500); }, "500", false),
+    /*12*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_GIANT_WALLET); }, "RG_GIANT_WALLET", false),
+    /*13*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(500); }, "500", false),
     /*14*/ new TernaryExpression(15, 17, 18),
     /*15*/ new ExternFunctionCallExpression(has_adapter, "has",  {"item"}, {16}),
-    /*16*/ new ValueExpression([](LogicExpression::Scope& scope){ return static_cast<LogicExpression::value_t>(RG_ADULT_WALLET); }, "RG_ADULT_WALLET", false),
-    /*17*/ new ValueExpression([](LogicExpression::Scope& scope){ return static_cast<LogicExpression::value_t>(200); }, "200", false),
+    /*16*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_ADULT_WALLET); }, "RG_ADULT_WALLET", false),
+    /*17*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(200); }, "200", false),
     /*18*/ new TernaryExpression(19, 21, 22),
     /*19*/ new ExternFunctionCallExpression(has_adapter, "has",  {"item"}, {20}),
-    /*20*/ new ValueExpression([](LogicExpression::Scope& scope){ return static_cast<LogicExpression::value_t>(RG_CHILD_WALLET); }, "RG_CHILD_WALLET", false),
-    /*21*/ new ValueExpression([](LogicExpression::Scope& scope){ return static_cast<LogicExpression::value_t>(99); }, "99", false),
-    /*22*/ new ValueExpression([](LogicExpression::Scope& scope){ return static_cast<LogicExpression::value_t>(0); }, "0", false),
+    /*20*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_CHILD_WALLET); }, "RG_CHILD_WALLET", false),
+    /*21*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(99); }, "99", false),
+    /*22*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(0); }, "0", false),
     });
 
-    static inline auto RR_MARKET_BAZAAR_RC_MARKET_BAZAAR_ITEM_1 = Expressions[0];
-};
+    return { expressions.data(), expressions.size() };
+}
 // clang-format on
 
-//std::vector<LogicExpression*> LogicExpression::GetChildren() const {
-//    std::vector<LogicExpression*> children;
-//    children.reserve(_children.size());
-//    for (auto index : _children) {
-//        children.push_back(LogicLibrary::Expressions[index]);
-//    }
-//    return std::move(children);
-//}
-
-void LogicExpression::ResolveChildren() {
-    if (_childrenResolved) {
-        return;
-    }
-
-    for (auto& child : _children) {
-        const auto index = child.index;
-        assert(index < LogicLibrary::Expressions.size());
-        child.expression = LogicLibrary::Expressions[index];
-    }
-
-    _childrenResolved = true;
-}
-
-std::map<std::string, std::shared_ptr<LogicExpression>> expressions;
-
-static std::string ToString(const LogicExpression::value_t& value) {
+static std::string ToString(const value_t& value) {
     return std::visit(
         [](auto v) -> std::string {
             using V = std::decay_t<decltype(v)>;
@@ -618,7 +65,7 @@ static std::string ToString(const LogicExpression::value_t& value) {
         value);
 }
 
-static std::string ToString(const std::optional<LogicExpression::value_t>& value) {
+static std::string ToString(const std::optional<value_t>& value) {
     if (!value.has_value()) {
         return "";
     }
@@ -629,10 +76,10 @@ struct ExpressionTable {
     struct ExpressionRow {
         LogicExpression* Expression;
         std::vector<ExpressionRow> Children;
-        std::optional<LogicExpression::value_t> ChildDay;
-        std::optional<LogicExpression::value_t> ChildNight;
-        std::optional<LogicExpression::value_t> AdultDay;
-        std::optional<LogicExpression::value_t> AdultNight;
+        std::optional<value_t> ChildDay;
+        std::optional<value_t> ChildNight;
+        std::optional<value_t> AdultDay;
+        std::optional<value_t> AdultNight;
         bool Expanded = false;
         std::string ErrorMessage;
     };
@@ -840,8 +287,7 @@ static std::tuple<bool, bool, bool> CalculateCombines(const ExpressionTable::Exp
 }
 
 static void PopulateConnectionExpression(LogicTrackerNode::Connection& connection, const std::string& expressionStr) {
-    //auto expression = expressions[expressionStr];
-    auto expression = LogicLibrary::RR_MARKET_BAZAAR_RC_MARKET_BAZAAR_ITEM_1;
+    auto expression = GetExpressions()[0];
 
     LogicStateGuard logicStateGuard;
 
@@ -857,7 +303,7 @@ static void PopulateConnectionExpression(LogicTrackerNode::Connection& connectio
             logic->IsChild = true;
             logic->AtDay = true;
 
-            LogicExpression::Scope scope;
+            VariableScope scope;
             const auto& eval = connection.ExpressionTable.Root.Expression->Evaluate(scope);
             PopulateExpressionValues(connection.ExpressionTable.Root, eval, AgeTime::ChildDay);
 
@@ -868,7 +314,7 @@ static void PopulateConnectionExpression(LogicTrackerNode::Connection& connectio
             logic->IsChild = true;
             logic->AtNight = true;
 
-            LogicExpression::Scope scope;
+            VariableScope scope;
             const auto& eval = connection.ExpressionTable.Root.Expression->Evaluate(scope);
             PopulateExpressionValues(connection.ExpressionTable.Root, eval, AgeTime::ChildNight);
 
@@ -879,7 +325,7 @@ static void PopulateConnectionExpression(LogicTrackerNode::Connection& connectio
             logic->IsAdult = true;
             logic->AtDay = true;
 
-            LogicExpression::Scope scope;
+            VariableScope scope;
             const auto& eval = connection.ExpressionTable.Root.Expression->Evaluate(scope);
             PopulateExpressionValues(connection.ExpressionTable.Root, eval, AgeTime::AdultDay);
 
@@ -890,7 +336,7 @@ static void PopulateConnectionExpression(LogicTrackerNode::Connection& connectio
             logic->IsAdult = true;
             logic->AtNight = true;
 
-            LogicExpression::Scope scope;
+            VariableScope scope;
             const auto& eval = connection.ExpressionTable.Root.Expression->Evaluate(scope);
             PopulateExpressionValues(connection.ExpressionTable.Root, eval, AgeTime::AdultNight);
 
@@ -1068,62 +514,6 @@ static void CalculateShowRandomizerEvent() {
 
     showEvent.clear();
 }
-
-#if 0
-static void DrawCondition(const LogicExpression& expression) {
-    static ImVec4 fontColors[] = {
-        ImVec4(0.5f, 0.5f, 1.0f, 1.0f), // Blue
-        ImVec4(0.5f, 1.0f, 0.5f, 1.0f), // Green
-        ImVec4(1.0f, 0.5f, 0.5f, 1.0f), // Red
-        ImVec4(1.0f, 1.0f, 0.5f, 1.0f), // Yellow
-        ImVec4(1.0f, 0.5f, 1.0f, 1.0f), // Magenta
-        ImVec4(0.5f, 1.0f, 1.0f, 1.0f), // Cyan
-    };
-    static size_t fontColorsLength = std::size(fontColors);
-    const ImVec4 defaultColor = ImGui::GetStyleColorVec4(ImGuiCol_Text);
-
-    LogicExpression::Type type = expression.GetType();
-    const auto& children = expression.GetChildren();
-
-    if (type == LogicExpression::Type::And || type == LogicExpression::Type::Or ||
-        type == LogicExpression::Type::Comparison || type == LogicExpression::Type::Add ||
-        type == LogicExpression::Type::Subtract || type == LogicExpression::Type::Multiply ||
-        type == LogicExpression::Type::Divide) {
-        std::vector<std::pair<ImVec4, std::string>> segments;
-        for (size_t i = 0; i < children.size(); ++i) {
-            segments.emplace_back(fontColors[i % fontColorsLength], children[i]->ToString());
-            if (i < children.size() - 1) {
-                segments.emplace_back(defaultColor, " " + expression.GetOperation() + " ");
-            }
-        }
-        DrawColoredWrappedText(segments);
-    } else if (type == LogicExpression::Type::Not) {
-        DrawColoredWrappedText({ { defaultColor, "!" }, { fontColors[0], children[0]->ToString() } });
-    } else if (type == LogicExpression::Type::FunctionCall) {
-        std::vector<std::pair<ImVec4, std::string>> segments;
-        segments.emplace_back(fontColors[0], expression.GetFunctionName());
-        segments.emplace_back(defaultColor, "(");
-        for (size_t i = 0; i < children.size(); ++i) {
-            segments.emplace_back(fontColors[(i + 1) % fontColorsLength], children[i]->ToString());
-            if (i < children.size() - 1) {
-                segments.emplace_back(defaultColor, ", ");
-            }
-        }
-        segments.emplace_back(defaultColor, ")");
-        DrawColoredWrappedText(segments);
-    } else if (type == LogicExpression::Type::Ternary) {
-        DrawColoredWrappedText({ { fontColors[0], children[0]->ToString() },
-                                 { defaultColor, " ? " },
-                                 { fontColors[1], children[1]->ToString() },
-                                 { defaultColor, " : " },
-                                 { fontColors[2], children[2]->ToString() } });
-    } else if (type == LogicExpression::Type::Value) {
-        DrawColoredWrappedText({ { fontColors[0], expression.ToString() } });
-    } else {
-        DrawColoredWrappedText({ { defaultColor, expression.ToString() } });
-    }
-}
-#endif
 
 static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTable& table,
                               ExpressionTable::ExpressionRow& row, int level) {
@@ -1466,7 +856,7 @@ void LogicTrackerWindow::DrawElement() {
 }
 
 void LogicTrackerWindow::InitElement() {
-    for (auto* expression : LogicLibrary::Expressions) {
+    for (auto* expression : GetExpressions()) {
         expression->ResolveChildren();
     }
 }

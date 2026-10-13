@@ -162,6 +162,21 @@ class NotExpression : public LogicExpression {
     void Draw() const override;
 };
 
+class ArithmeticExpression : public BinaryExpression {
+  public:
+    ArithmeticExpression(std::string_view operation, std::vector<index_t> children);
+
+  protected:
+    bool TryShortCircuit(const value_t& left, value_t& result) const override;
+
+    value_t Combine(const value_t& left, const value_t& right) const override;
+
+    std::string GetOperation() const override;
+
+  private:
+    std::string_view _operation;
+};
+
 class ComparisonExpression : public LogicExpression {
   public:
     ComparisonExpression(std::string_view operation, index_t left, index_t right);

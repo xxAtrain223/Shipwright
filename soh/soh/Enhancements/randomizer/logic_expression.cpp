@@ -33,6 +33,11 @@ static bool NeedsParentheses(const LogicExpression* parent, const LogicExpressio
         return childIsBinary || childIsComparison || childIsTernary;
     }
 
+    if (dynamic_cast<const ArithmeticExpression*>(parent)) {
+        return childIsBinary || childIsComparison || childIsTernary ||
+               dynamic_cast<const NotExpression*>(child) != nullptr;
+    }
+
     if (dynamic_cast<const BinaryExpression*>(parent)) {
         return childIsTernary ||
                (dynamic_cast<const AndExpression*>(parent) && dynamic_cast<const OrExpression*>(child)) ||
@@ -278,6 +283,45 @@ std::string NotExpression::ToString() const {
 void NotExpression::Draw() const {
     DrawColoredWrappedText(
         { { ImGui::GetStyleColorVec4(ImGuiCol_Text), "not " }, { fontColors[0], WrapParentheses(this, GetChildren()[0]) } });
+}
+
+ArithmeticExpression::ArithmeticExpression(std::string_view operation, std::vector<index_t> children)
+    : BinaryExpression(children) {
+    _operation = operation;
+}
+
+bool ArithmeticExpression::TryShortCircuit(const value_t& left, value_t& result) const {
+    return false;
+}
+
+value_t ArithmeticExpression::Combine(const value_t& left, const value_t& right) const {
+    auto operate = [&](auto a, auto b) -> value_t {
+        using ArithmeticType = decltype(+a + +b);
+
+        const auto l = static_cast<ArithmeticType>(a);
+        const auto r = static_cast<ArithmeticType>(b);
+
+        if (_operation == "+")
+            return l + r;
+        if (_operation == "-")
+            return l - r;
+        if (_operation == "*")
+            return l * r;
+        if (_operation == "/") {
+            if (r == 0) {
+                throw std::runtime_error("Division by zero in arithmetic expression");
+            }
+            return l / r;
+        }
+
+        throw std::runtime_error("Unknown arithmetic operation: " + std::string(_operation));
+    };
+
+    return std::visit(operate, left, right);
+}
+
+std::string ArithmeticExpression::GetOperation() const {
+    return std::string(_operation);
 }
 
 ComparisonExpression::ComparisonExpression(std::string_view operation, index_t left, index_t right) {

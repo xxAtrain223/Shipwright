@@ -46,6 +46,50 @@ std::span<LogicExpression* const> GetExpressions() {
     /*20*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_CHILD_WALLET); }, "RG_CHILD_WALLET", false),
     /*21*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(99); }, "99", false),
     /*22*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(0); }, "0", false),
+    /*23*/ new AndExpression({24, 26, 28, 30, 32, 34, 36}),
+
+    // Multiple terms: 2 + 3 + 4 == 9
+    /*24*/ new ComparisonExpression("==", 25, 38),
+    /*25*/ new ArithmeticExpression("+", {39, 40, 41}),
+
+    // Left-to-right subtraction: (20 - 3) - 2 == 15
+    /*26*/ new ComparisonExpression("==", 27, 42),
+    /*27*/ new ArithmeticExpression("-", {43, 40, 39}),
+
+    // Multiple terms: 2 * 3 * 4 == 24
+    /*28*/ new ComparisonExpression("==", 29, 44),
+    /*29*/ new ArithmeticExpression("*", {39, 40, 41}),
+
+    // Left-to-right division: (24 / 3) / 4 == 2
+    /*30*/ new ComparisonExpression("==", 31, 39),
+    /*31*/ new ArithmeticExpression("/", {44, 40, 41}),
+
+    // Mixed operators: 2 + (3 * 4) == 14
+    /*32*/ new ComparisonExpression("==", 33, 45),
+    /*33*/ new ArithmeticExpression("+", {39, 46}),
+
+    // Explicit grouping: (2 + 3) * 4 == 20
+    /*34*/ new ComparisonExpression("==", 35, 43),
+    /*35*/ new ArithmeticExpression("*", {47, 41}),
+
+    // Right-hand grouping: 20 - (3 - 2) == 19
+    /*36*/ new ComparisonExpression("==", 37, 48),
+    /*37*/ new ArithmeticExpression("-", {43, 49}),
+
+    /*38*/ new ValueExpression([](VariableScope&) -> value_t { return int32_t{9}; }, "9", false),
+    /*39*/ new ValueExpression([](VariableScope&) -> value_t { return int32_t{2}; }, "2", false),
+    /*40*/ new ValueExpression([](VariableScope&) -> value_t { return int32_t{3}; }, "3", false),
+    /*41*/ new ValueExpression([](VariableScope&) -> value_t { return int32_t{4}; }, "4", false),
+    /*42*/ new ValueExpression([](VariableScope&) -> value_t { return int32_t{15}; }, "15", false),
+    /*43*/ new ValueExpression([](VariableScope&) -> value_t { return int32_t{20}; }, "20", false),
+    /*44*/ new ValueExpression([](VariableScope&) -> value_t { return int32_t{24}; }, "24", false),
+    /*45*/ new ValueExpression([](VariableScope&) -> value_t { return int32_t{14}; }, "14", false),
+
+    /*46*/ new ArithmeticExpression("*", {40, 41}),
+    /*47*/ new ArithmeticExpression("+", {39, 40}),
+
+    /*48*/ new ValueExpression([](VariableScope&) -> value_t { return int32_t{19}; }, "19", false),
+    /*49*/ new ArithmeticExpression("-", {40, 39}),
     });
 
     return { expressions.data(), expressions.size() };
@@ -287,7 +331,7 @@ static std::tuple<bool, bool, bool> CalculateCombines(const ExpressionTable::Exp
 }
 
 static void PopulateConnectionExpression(LogicTrackerNode::Connection& connection, const std::string& expressionStr) {
-    auto expression = GetExpressions()[0];
+    auto expression = GetExpressions()[23];
 
     LogicStateGuard logicStateGuard;
 

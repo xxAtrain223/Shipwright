@@ -772,8 +772,8 @@ bool SpiritCertainAccess(RandomizerRegion region) {
     anyAge is equivalent to a self referencing Here, used for events and any check where that is relevent.
 */
 
-bool SpiritShared(RandomizerRegion region, ConditionFn condition, bool anyAge, RandomizerRegion otherRegion,
-                  ConditionFn otherCondition, RandomizerRegion thirdRegion, ConditionFn thirdCondition) {
+bool SpiritShared(RandomizerRegion region, ConditionFnCap condition, bool anyAge, RandomizerRegion otherRegion,
+                  ConditionFnCap otherCondition, RandomizerRegion thirdRegion, ConditionFnCap thirdCondition) {
     SpiritLogicData& curRegionData = Region::spiritLogicData[region];
     bool result = false;
 
@@ -860,7 +860,7 @@ bool SpiritShared(RandomizerRegion region, ConditionFn condition, bool anyAge, R
     return result;
 }
 
-bool AnyAgeTime(ConditionFn condition) {
+bool AnyAgeTime(ConditionFnCap condition) {
     assert(logic->CurrentRegionKey != RR_NONE);
     return areaTable[logic->CurrentRegionKey].AnyAgeTime(condition);
 }

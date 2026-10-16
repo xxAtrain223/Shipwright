@@ -5,20 +5,62 @@
 #include "../../OTRGlobals.h"
 #include "logic_expression.h"
 
+#include <algorithm>
+#include <array>
 #include <deque>
 #include <stack>
 #include <ranges>
+#include <utility>
 
 #include "logic/generated/soh/functions.gen.h"
 
+class LogicStateGuard {
+  public:
+    LogicStateGuard()
+        : isChild(logic->IsChild), isAdult(logic->IsAdult), atDay(logic->AtDay), atNight(logic->AtNight),
+          currentRegionKey(logic->CurrentRegionKey) {
+    }
+
+    ~LogicStateGuard() {
+        logic->IsChild = isChild;
+        logic->IsAdult = isAdult;
+        logic->AtDay = atDay;
+        logic->AtNight = atNight;
+        logic->CurrentRegionKey = currentRegionKey;
+    }
+
+  private:
+    bool isChild;
+    bool isAdult;
+    bool atDay;
+    bool atNight;
+    RandomizerRegion currentRegionKey;
+};
+
 // clang-format off
-static value_t has_adapter(VariableScope& scope) {
-    auto item = static_cast<RandomizerGet>(ToInt<uint32_t>(scope.get("item")));
+static value_t has_adapter(std::span<EvalResult> arguments) {
+    auto item = static_cast<RandomizerGet>(ToInt<uint32_t>(arguments[0].Result));
     return static_cast<value_t>(has(item));
 }
 
-static value_t check_price_adapter(VariableScope& scope) {
+static value_t check_price_adapter(std::span<EvalResult>) {
     return static_cast<value_t>(check_price());
+}
+
+static value_t any_age_adapter(std::span<EvalResult> arguments) {
+    LogicStateGuard stateGuard;
+    return any_age(MakeConditionCallback(arguments[0]));
+}
+
+static value_t spirit_shared_adapter(std::span<EvalResult> arguments) {
+    LogicStateGuard stateGuard;
+    const auto firstRegion = static_cast<RandomizerRegion>(ToInt<int32_t>(arguments[0].Result));
+    const auto secondRegion = static_cast<RandomizerRegion>(ToInt<int32_t>(arguments[3].Result));
+    const auto thirdRegion = static_cast<RandomizerRegion>(ToInt<int32_t>(arguments[5].Result));
+    return spirit_shared(
+        firstRegion, MakeConditionCallback(arguments[1]), ToBool(arguments[2].Result),
+        secondRegion, MakeConditionCallback(arguments[4]), thirdRegion,
+        MakeConditionCallback(arguments[6]));
 }
 
 std::span<LogicExpression* const> GetExpressions() {
@@ -90,6 +132,28 @@ std::span<LogicExpression* const> GetExpressions() {
 
     /*48*/ new ValueExpression([](VariableScope&) -> value_t { return int32_t{19}; }, "19", false),
     /*49*/ new ArithmeticExpression("-", {40, 39}),
+
+    /*50*/ new ExternFunctionCallExpression(any_age_adapter, "any_age", {"condition"}, {51}),
+    /*51*/ new ConditionExpression(52),
+    /*52*/ new AndExpression({53, 54}),
+    /*53*/ new ValueExpression([](VariableScope&) -> value_t { return is_adult(); }, "is_adult()", false),
+    /*54*/ new ExternFunctionCallExpression(has_adapter, "has", {"item"}, {55}),
+    /*55*/ new ValueExpression([](VariableScope&) -> value_t { return static_cast<int32_t>(RG_HOOKSHOT); }, "RG_HOOKSHOT", false),
+
+    /*56*/ new InvokeExpression(57),
+    /*57*/ new FunctionCallExpression("make_condition", {"item"}, {55}, 58),
+    /*58*/ new ConditionExpression(59),
+    /*59*/ new ExternFunctionCallExpression(has_adapter, "has", {"item"}, {60}),
+    /*60*/ new ValueExpression([](VariableScope& scope) -> value_t { return scope.get("item"); }, "item", false),
+
+    /*61*/ new ExternFunctionCallExpression(spirit_shared_adapter, "spirit_shared",
+               {"first_region", "first_condition", "any_age", "second_region", "second_condition", "third_region", "third_condition"},
+               {62, 63, 64, 65, 66, 65, 66}),
+    /*62*/ new ValueExpression([](VariableScope&) -> value_t { return static_cast<int32_t>(logic->CurrentRegionKey); }, "here", false),
+    /*63*/ new ConditionExpression(52),
+    /*64*/ new ValueExpression([](VariableScope&) -> value_t { return false; }, "false", false),
+    /*65*/ new ValueExpression([](VariableScope&) -> value_t { return static_cast<int32_t>(RR_NONE); }, "RR_NONE", false),
+    /*66*/ new ConditionExpression(64),
     });
 
     return { expressions.data(), expressions.size() };
@@ -102,6 +166,8 @@ static std::string ToString(const value_t& value) {
             using V = std::decay_t<decltype(v)>;
             if constexpr (std::is_same_v<V, bool>) {
                 return v ? "true" : "false";
+            } else if constexpr (std::is_same_v<V, condition_t>) {
+                return "";
             } else {
                 return std::to_string(v);
             }
@@ -118,8 +184,9 @@ static std::string ToString(const std::optional<value_t>& value) {
 
 struct ExpressionTable {
     struct ExpressionRow {
-        LogicExpression* Expression;
+        const LogicExpression* Expression = nullptr;
         std::vector<ExpressionRow> Children;
+        std::vector<ExpressionRow> ConditionBodies;
         std::optional<value_t> ChildDay;
         std::optional<value_t> ChildNight;
         std::optional<value_t> AdultDay;
@@ -163,29 +230,6 @@ struct RegionAccessFlags {
     bool ChildNight = false;
     bool AdultDay = false;
     bool AdultNight = false;
-};
-
-class LogicStateGuard {
-  public:
-    LogicStateGuard()
-        : isChild(logic->IsChild), isAdult(logic->IsAdult), atDay(logic->AtDay), atNight(logic->AtNight),
-          currentRegionKey(logic->CurrentRegionKey) {
-    }
-
-    ~LogicStateGuard() {
-        logic->IsChild = isChild;
-        logic->IsAdult = isAdult;
-        logic->AtDay = atDay;
-        logic->AtNight = atNight;
-        logic->CurrentRegionKey = currentRegionKey;
-    }
-
-  private:
-    bool isChild;
-    bool isAdult;
-    bool atDay;
-    bool atNight;
-    RandomizerRegion currentRegionKey;
 };
 
 static bool ApplyTimePassAccess(const Region* region, RegionAccessFlags& access) {
@@ -279,10 +323,14 @@ size_t expandNodeId = -1;
 size_t clearNodesAfterNodeID = -1;
 std::vector<LogicTrackerNode> nodes;
 
-static ExpressionTable::ExpressionRow CreateExpressionRows(LogicExpression* expression) {
+static ExpressionTable::ExpressionRow CreateExpressionRows(const LogicExpression* expression) {
     ExpressionTable::ExpressionRow row;
     row.Expression = expression;
     row.Expanded = false;
+
+    if (dynamic_cast<const ConditionExpression*>(expression)) {
+        return row;
+    }
 
     const auto& children = expression->GetChildren();
     row.Children.reserve(children.size());
@@ -297,23 +345,38 @@ enum class AgeTime { ChildDay, ChildNight, AdultDay, AdultNight };
 
 static void PopulateExpressionValues(ExpressionTable::ExpressionRow& row, const EvalResult& eval,
                                      AgeTime ageTime) {
+    const auto& displayed = eval.Invocation ? *eval.Invocation : eval;
+    std::optional<value_t> value;
+    if (!std::holds_alternative<condition_t>(displayed.Result)) {
+        value = displayed.Result;
+    }
     if (ageTime == AgeTime::ChildDay) {
-        row.ChildDay = eval.Result;
+        row.ChildDay = value;
     } else if (ageTime == AgeTime::ChildNight) {
-        row.ChildNight = eval.Result;
+        row.ChildNight = value;
     } else if (ageTime == AgeTime::AdultDay) {
-        row.AdultDay = eval.Result;
+        row.AdultDay = value;
     } else if (ageTime == AgeTime::AdultNight) {
-        row.AdultNight = eval.Result;
+        row.AdultNight = value;
     }
 
-    for (auto& rowChild : row.Children) {
-        for (const auto& evalChild : eval.Children) {
-            if (rowChild.Expression == evalChild.Expression) {
-                PopulateExpressionValues(rowChild, evalChild, ageTime);
-                break;
-            }
+    for (const auto& child : eval.Children) {
+        assert(child.ChildIndex < row.Children.size());
+        auto& rowChild = row.Children.at(child.ChildIndex);
+        assert(rowChild.Expression == child.Expression);
+        PopulateExpressionValues(rowChild, child, ageTime);
+    }
+
+    if (eval.Invocation) {
+        const auto& invocation = *eval.Invocation;
+        auto it = std::find_if(row.ConditionBodies.begin(), row.ConditionBodies.end(), [&](const auto& existing) {
+            return existing.Expression == invocation.Expression;
+        });
+        if (it == row.ConditionBodies.end()) {
+            row.ConditionBodies.push_back(CreateExpressionRows(invocation.Expression));
+            it = std::prev(row.ConditionBodies.end());
         }
+        PopulateExpressionValues(*it, invocation, ageTime);
     }
 }
 
@@ -327,11 +390,17 @@ static std::tuple<bool, bool, bool> CalculateCombines(const ExpressionTable::Exp
         combineChild &= childCombineChild;
         combineAdult &= childCombineAdult;
     }
+    for (const auto& body : row.ConditionBodies) {
+        auto [bodyCombineAll, bodyCombineChild, bodyCombineAdult] = CalculateCombines(body);
+        combineAll &= bodyCombineAll;
+        combineChild &= bodyCombineChild;
+        combineAdult &= bodyCombineAdult;
+    }
     return { combineAll, combineChild, combineAdult };
 }
 
 static void PopulateConnectionExpression(LogicTrackerNode::Connection& connection, const std::string& expressionStr) {
-    auto expression = GetExpressions()[23];
+    auto expression = GetExpressions()[61];
 
     LogicStateGuard logicStateGuard;
 
@@ -390,6 +459,7 @@ static void PopulateConnectionExpression(LogicTrackerNode::Connection& connectio
     } catch (const std::exception& e) {
         connection.ExpressionTable.Root.ErrorMessage = std::string("Eval Error: ") + e.what();
         connection.ExpressionTable.Root.Children.clear();
+        connection.ExpressionTable.Root.ConditionBodies.clear();
         connection.ExpressionTable.CombineAll = true;
         return;
     }
@@ -559,6 +629,31 @@ static void CalculateShowRandomizerEvent() {
     showEvent.clear();
 }
 
+static bool HasExpressionChildren(const ExpressionTable::ExpressionRow& row) {
+    if (!row.Children.empty()) {
+        return true;
+    }
+    for (const auto& body : row.ConditionBodies) {
+        if (HasExpressionChildren(body)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTable& table,
+                              ExpressionTable::ExpressionRow& row, int level);
+
+static void DrawExpressionChildren(const LogicTrackerNode& node, const ExpressionTable& table,
+                                   ExpressionTable::ExpressionRow& row, int level) {
+    for (auto& child : row.Children) {
+        DrawExpressionRow(node, table, child, level);
+    }
+    for (auto& body : row.ConditionBodies) {
+        DrawExpressionChildren(node, table, body, level);
+    }
+}
+
 static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTable& table,
                               ExpressionTable::ExpressionRow& row, int level) {
     ImGui::TableNextRow();
@@ -589,7 +684,7 @@ static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTabl
     }
 
     const auto& expression = *row.Expression;
-    if (!row.Children.empty()) {
+    if (HasExpressionChildren(row)) {
         if (ImGui::Button(std::to_string(level).c_str())) {
             row.Expanded = !row.Expanded;
         }
@@ -641,9 +736,7 @@ static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTabl
     }
 
     if (row.Expanded) {
-        for (auto& child : row.Children) {
-            DrawExpressionRow(node, table, child, level + 1);
-        }
+        DrawExpressionChildren(node, table, row, level + 1);
     }
 
     if (level > 0) {

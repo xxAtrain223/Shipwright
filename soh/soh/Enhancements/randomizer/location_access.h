@@ -4,6 +4,7 @@
 #include <vector>
 #include <list>
 #include <set>
+#include <functional>
 
 #include "soh/Enhancements/randomizer/randomizerTypes.h"
 #include "soh/Enhancements/randomizer/SeedContext.h"
@@ -14,6 +15,7 @@
 #define TIME_DOESNT_PASS false
 
 typedef bool (*ConditionFn)();
+using ConditionFnCap = std::function<bool()>;
 
 // I hate this but every alternative I can think of right now is worse
 extern Rando::Context* ctx;
@@ -228,7 +230,7 @@ class Region {
     // access to this area. For example: if there are rocks that block a path
     // which both child and adult can access, adult having hammer can give
     // both child and adult access to the path.
-    bool AnyAgeTime(ConditionFn condition) const {
+    bool AnyAgeTime(ConditionFnCap condition) const {
         // store current age variables
         bool pastAdult = logic->IsAdult;
         bool pastChild = logic->IsChild;
@@ -259,11 +261,11 @@ class Region {
 extern std::array<Region, RR_MAX> areaTable;
 extern std::vector<EventAccess> grottoEvents;
 
-bool AnyAgeTime(ConditionFn condition);
+bool AnyAgeTime(ConditionFnCap condition);
 bool SpiritShared(
-    RandomizerRegion region, ConditionFn condition, bool anyAge = false, RandomizerRegion otherRegion = RR_NONE,
-    ConditionFn otherCondition = [] { return false; }, RandomizerRegion thirdRegion = RR_NONE,
-    ConditionFn thirdCondition = [] { return false; });
+    RandomizerRegion region, ConditionFnCap condition, bool anyAge = false, RandomizerRegion otherRegion = RR_NONE,
+    ConditionFnCap otherCondition = [] { return false; }, RandomizerRegion thirdRegion = RR_NONE,
+    ConditionFnCap thirdCondition = [] { return false; });
 bool SpiritCertainAccess(RandomizerRegion region);
 bool DMCPadToPots();
 bool CanPlantBean(const RandomizerRegion region, RandomizerGet bean);

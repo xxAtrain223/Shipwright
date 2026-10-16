@@ -3,9 +3,9 @@
 #include "imgui.h"
 
 #include <array>
-#include <optional>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 
 static auto fontColors = std::to_array({
     ImVec4(0.5f, 0.5f, 1.0f, 1.0f), // Blue
@@ -25,11 +25,14 @@ static bool NeedsParentheses(const LogicExpression* parent, const LogicExpressio
     const bool childIsComparison = dynamic_cast<const ComparisonExpression*>(child) != nullptr;
     const bool childIsTernary = dynamic_cast<const TernaryExpression*>(child) != nullptr;
 
-    if (dynamic_cast<const NotExpression*>(parent)) {
-        return childIsBinary || childIsComparison || childIsTernary;
+    if (dynamic_cast<const InvokeExpression*>(parent)) {
+        return childIsBinary || childIsComparison || childIsTernary ||
+               dynamic_cast<const NotExpression*>(child) != nullptr ||
+               dynamic_cast<const ConditionExpression*>(child) != nullptr;
     }
 
-    if (dynamic_cast<const ComparisonExpression*>(parent)) {
+    if (dynamic_cast<const NotExpression*>(parent) || dynamic_cast<const ComparisonExpression*>(parent) ||
+        dynamic_cast<const TernaryExpression*>(parent)) {
         return childIsBinary || childIsComparison || childIsTernary;
     }
 
@@ -42,10 +45,6 @@ static bool NeedsParentheses(const LogicExpression* parent, const LogicExpressio
         return childIsTernary ||
                (dynamic_cast<const AndExpression*>(parent) && dynamic_cast<const OrExpression*>(child)) ||
                (dynamic_cast<const OrExpression*>(parent) && dynamic_cast<const AndExpression*>(child));
-    }
-
-    if (dynamic_cast<const TernaryExpression*>(parent)) {
-        return childIsBinary || childIsComparison || childIsTernary;
     }
 
     return false;
@@ -74,8 +73,14 @@ void LogicExpression::ResolveChildren() {
     _childrenResolved = true;
 }
 
+EvalResult LogicExpression::EvaluateChild(VariableScope& scope, size_t childIndex) const {
+    auto result = GetChildren()[childIndex]->Evaluate(scope);
+    result.ChildIndex = childIndex;
+    return result;
+}
+
 void VariableScope::push(std::string_view variableName, value_t value) {
-    auto [it, inserted] = variables.try_emplace(variableName);
+    auto [it, inserted] = variables.try_emplace(std::string(variableName));
     try {
         it->second.push(value);
     } catch (...) {
@@ -87,15 +92,33 @@ void VariableScope::push(std::string_view variableName, value_t value) {
 }
 
 value_t VariableScope::get(std::string_view variableName) const {
-    return variables.at(variableName).top();
+    return variables.at(std::string(variableName)).top();
 }
 
 void VariableScope::pop(std::string_view variableName) {
-    auto& stack = variables.at(variableName);
+    const std::string name(variableName);
+    auto& stack = variables.at(name);
     stack.pop();
     if (stack.empty()) {
-        variables.erase(variableName);
+        variables.erase(name);
     }
+}
+
+bindings_t VariableScope::Capture() const {
+    bindings_t bindings;
+    for (const auto& [name, values] : variables) {
+        bindings.emplace(name, values.top());
+    }
+    return bindings;
+}
+
+std::function<bool()> MakeConditionCallback(EvalResult& argument) {
+    return [&argument] {
+        auto result = Invoke(argument.Result);
+        const bool value = std::get<bool>(result.Result);
+        argument.Invocation = std::make_shared<const EvalResult>(std::move(result));
+        return value;
+    };
 }
 
 VariableScope::~VariableScope() {
@@ -105,31 +128,61 @@ VariableScope::~VariableScope() {
 namespace {
 class ScopedParameterBindings {
   public:
-    ScopedParameterBindings(VariableScope& scope, std::span<const std::string_view> names)
-        : _scope(scope), _names(names) {
+    ScopedParameterBindings(VariableScope& scope, std::span<const std::string_view> names,
+                            std::span<const EvalResult> arguments)
+        : ScopedParameterBindings(scope, names.size()) {
+        assert(names.size() == arguments.size());
+        for (size_t i = 0; i < names.size(); ++i) {
+            Push(names[i], arguments[i].Result);
+        }
+    }
+
+    ScopedParameterBindings(VariableScope& scope, const bindings_t& captured)
+        : ScopedParameterBindings(scope, captured.size()) {
+        for (const auto& [name, value] : captured) {
+            Push(name, value);
+        }
     }
 
     ScopedParameterBindings(const ScopedParameterBindings&) = delete;
     ScopedParameterBindings& operator=(const ScopedParameterBindings&) = delete;
 
-    void Push(value_t value) {
-        assert(_boundCount < _names.size());
-        _scope.push(_names[_boundCount], value);
-        ++_boundCount;
-    }
-
     ~ScopedParameterBindings() noexcept {
-        while (_boundCount > 0) {
-            _scope.pop(_names[--_boundCount]);
+        while (!_names.empty()) {
+            _scope.pop(_names.back());
+            _names.pop_back();
         }
     }
 
   private:
+    ScopedParameterBindings(VariableScope& scope, size_t count) : _scope(scope) {
+        _names.reserve(count);
+    }
+
+    void Push(std::string_view name, const value_t& value) {
+        _scope.push(name, value);
+        _names.push_back(name);
+    }
+
     VariableScope& _scope;
-    std::span<const std::string_view> _names;
-    size_t _boundCount = 0;
+    std::vector<std::string_view> _names;
 };
+
 } // namespace
+
+EvalResult Invoke(const value_t& value) {
+    const auto* condition = std::get_if<condition_t>(&value);
+    if (!condition || !*condition) {
+        throw std::runtime_error("Cannot invoke a non-condition value");
+    }
+
+    VariableScope invocationScope;
+    ScopedParameterBindings bindings(invocationScope, (*condition)->Bindings);
+
+    auto result = (*condition)->Body->Evaluate(invocationScope);
+    result.Result = ToBool(result.Result);
+    return result;
+}
 
 static void DrawColoredWrappedText(const std::vector<std::pair<ImVec4, std::string>>& segments) {
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
@@ -163,6 +216,47 @@ static void DrawColoredWrappedText(const std::vector<std::pair<ImVec4, std::stri
         }
     }
     ImGui::SetCursorScreenPos(ImVec2(pos.x, y + fontSize));
+}
+
+ConditionExpression::ConditionExpression(index_t body) {
+    _children = { body };
+}
+
+EvalResult ConditionExpression::Evaluate(VariableScope& scope) const {
+    EvalResult result;
+    result.Expression = this;
+    result.Result = std::make_shared<const ConditionValue>(ConditionValue{ GetChildren()[0], scope.Capture() });
+    return result;
+}
+
+std::string ConditionExpression::ToString() const {
+    return GetChildren()[0]->ToString();
+}
+
+void ConditionExpression::Draw() const {
+    GetChildren()[0]->Draw();
+}
+
+InvokeExpression::InvokeExpression(index_t callee) {
+    _children = { callee };
+}
+
+EvalResult InvokeExpression::Evaluate(VariableScope& scope) const {
+    EvalResult result;
+    result.Expression = this;
+    result.Children.push_back(EvaluateChild(scope, 0));
+    result.Invocation = std::make_shared<const EvalResult>(Invoke(result.Children.back().Result));
+    result.Result = result.Invocation->Result;
+    return result;
+}
+
+std::string InvokeExpression::ToString() const {
+    return WrapParentheses(this, GetChildren()[0]) + "()";
+}
+
+void InvokeExpression::Draw() const {
+    DrawColoredWrappedText({ { fontColors[0], WrapParentheses(this, GetChildren()[0]) },
+                            { ImGui::GetStyleColorVec4(ImGuiCol_Text), "()" } });
 }
 
 BinaryExpression::BinaryExpression(std::vector<index_t> children) {
@@ -199,7 +293,7 @@ EvalResult BinaryExpression::Evaluate(VariableScope& scope) const {
 
     EvalResult evalResult{};
     evalResult.Expression = this;
-    evalResult.Children.push_back(children[0]->Evaluate(scope));
+    evalResult.Children.push_back(EvaluateChild(scope, 0));
 
     value_t value = evalResult.Children.back().Result;
 
@@ -210,7 +304,7 @@ EvalResult BinaryExpression::Evaluate(VariableScope& scope) const {
             break;
         }
 
-        evalResult.Children.push_back(children[i]->Evaluate(scope));
+        evalResult.Children.push_back(EvaluateChild(scope, i));
         value = Combine(value, evalResult.Children.back().Result);
     }
 
@@ -268,8 +362,7 @@ EvalResult NotExpression::Evaluate(VariableScope& scope) const {
     EvalResult evalResult;
     evalResult.Expression = this;
 
-    auto child = GetChildren()[0];
-    auto childResult = child->Evaluate(scope);
+    auto childResult = EvaluateChild(scope, 0);
     evalResult.Children.push_back(childResult);
     evalResult.Result = !ToBool(childResult.Result);
 
@@ -296,25 +389,29 @@ bool ArithmeticExpression::TryShortCircuit(const value_t& left, value_t& result)
 
 value_t ArithmeticExpression::Combine(const value_t& left, const value_t& right) const {
     auto operate = [&](auto a, auto b) -> value_t {
-        using ArithmeticType = decltype(+a + +b);
+        if constexpr (std::is_integral_v<decltype(a)> && std::is_integral_v<decltype(b)>) {
+            using ArithmeticType = decltype(+a + +b);
 
-        const auto l = static_cast<ArithmeticType>(a);
-        const auto r = static_cast<ArithmeticType>(b);
+            const auto l = static_cast<ArithmeticType>(a);
+            const auto r = static_cast<ArithmeticType>(b);
 
-        if (_operation == "+")
-            return l + r;
-        if (_operation == "-")
-            return l - r;
-        if (_operation == "*")
-            return l * r;
-        if (_operation == "/") {
-            if (r == 0) {
-                throw std::runtime_error("Division by zero in arithmetic expression");
+            if (_operation == "+")
+                return l + r;
+            if (_operation == "-")
+                return l - r;
+            if (_operation == "*")
+                return l * r;
+            if (_operation == "/") {
+                if (r == 0) {
+                    throw std::runtime_error("Division by zero in arithmetic expression");
+                }
+                return l / r;
             }
-            return l / r;
-        }
 
-        throw std::runtime_error("Unknown arithmetic operation: " + std::string(_operation));
+            throw std::runtime_error("Unknown arithmetic operation: " + std::string(_operation));
+        } else {
+            throw std::runtime_error("Cannot use a condition in arithmetic");
+        }
     };
 
     return std::visit(operate, left, right);
@@ -333,36 +430,36 @@ EvalResult ComparisonExpression::Evaluate(VariableScope& scope) const {
     EvalResult evalResult;
     evalResult.Expression = this;
 
-    auto children = GetChildren();
-
-    auto left = children[0];
-    auto leftResult = left->Evaluate(scope);
+    auto leftResult = EvaluateChild(scope, 0);
     evalResult.Children.push_back(leftResult);
 
-    auto right = children[1];
-    auto rightResult = right->Evaluate(scope);
+    auto rightResult = EvaluateChild(scope, 1);
     evalResult.Children.push_back(rightResult);
 
     auto compare = [&](auto a, auto b) -> bool {
-        using ComparisonType = decltype(+a + +b);
+        if constexpr (std::is_integral_v<decltype(a)> && std::is_integral_v<decltype(b)>) {
+            using ComparisonType = decltype(+a + +b);
 
-        const auto l = static_cast<ComparisonType>(a);
-        const auto r = static_cast<ComparisonType>(b);
+            const auto l = static_cast<ComparisonType>(a);
+            const auto r = static_cast<ComparisonType>(b);
 
-        if (_operation == "==")
-            return l == r;
-        if (_operation == "!=")
-            return l != r;
-        if (_operation == "<")
-            return l < r;
-        if (_operation == "<=")
-            return l <= r;
-        if (_operation == ">")
-            return l > r;
-        if (_operation == ">=")
-            return l >= r;
+            if (_operation == "==")
+                return l == r;
+            if (_operation == "!=")
+                return l != r;
+            if (_operation == "<")
+                return l < r;
+            if (_operation == "<=")
+                return l <= r;
+            if (_operation == ">")
+                return l > r;
+            if (_operation == ">=")
+                return l >= r;
 
-        throw std::runtime_error("Unknown comparison operator: " + std::string(_operation));
+            throw std::runtime_error("Unknown comparison operator: " + std::string(_operation));
+        } else {
+            throw std::runtime_error("Cannot compare condition values");
+        }
     };
 
     evalResult.Result = std::visit(compare, leftResult.Result, rightResult.Result);
@@ -400,25 +497,20 @@ FunctionCallExpression::FunctionCallExpression(std::string_view functionName,
     _children.push_back(definition);
 }
 
-EvalResult FunctionCallExpression::Evaluate(VariableScope& scope) const {
+EvalResult FunctionCallExpression::EvaluateArguments(VariableScope& scope) const {
     EvalResult evalResult;
     evalResult.Expression = this;
-
-    auto children = GetChildren();
-    std::vector<value_t> parameterValues(_parameterNames.size());
-
     for (size_t i = 0; i < _parameterNames.size(); i++) {
-        auto childResult = children[i]->Evaluate(scope);
-        parameterValues[i] = childResult.Result;
-        evalResult.Children.push_back(childResult);
+        evalResult.Children.push_back(EvaluateChild(scope, i));
     }
+    return evalResult;
+}
 
-    ScopedParameterBindings bindings(scope, _parameterNames);
-    for (const auto& value : parameterValues) {
-        bindings.Push(value);
-    }
+EvalResult FunctionCallExpression::Evaluate(VariableScope& scope) const {
+    auto evalResult = EvaluateArguments(scope);
+    ScopedParameterBindings bindings(scope, _parameterNames, evalResult.Children);
 
-    auto functionResult = children.back()->Evaluate(scope);
+    auto functionResult = EvaluateChild(scope, GetChildren().size() - 1);
     evalResult.Children.push_back(functionResult);
     evalResult.Result = functionResult.Result;
 
@@ -455,31 +547,15 @@ void FunctionCallExpression::Draw() const {
     DrawColoredWrappedText(segments);
 }
 
-ExternFunctionCallExpression::ExternFunctionCallExpression(function_t function, std::string_view functionName,
+ExternFunctionCallExpression::ExternFunctionCallExpression(extern_function_t function, std::string_view functionName,
                                  std::vector<std::string_view> parameterNames, std::vector<index_t> parameters)
     : FunctionCallExpression(functionName, parameterNames, parameters) {
     _function = function;
 }
 
 EvalResult ExternFunctionCallExpression::Evaluate(VariableScope& scope) const {
-    EvalResult evalResult;
-    evalResult.Expression = this;
-
-    auto children = GetChildren();
-    std::vector<value_t> parameterValues(_parameterNames.size());
-
-    for (size_t i = 0; i < _parameterNames.size(); i++) {
-        auto childResult = children[i]->Evaluate(scope);
-        parameterValues[i] = childResult.Result;
-        evalResult.Children.push_back(childResult);
-    }
-
-    ScopedParameterBindings bindings(scope, _parameterNames);
-    for (const auto& value : parameterValues) {
-        bindings.Push(value);
-    }
-
-    evalResult.Result = _function(scope);
+    auto evalResult = EvaluateArguments(scope);
+    evalResult.Result = _function(evalResult.Children);
 
     return evalResult;
 }
@@ -513,13 +589,10 @@ EvalResult TernaryExpression::Evaluate(VariableScope& scope) const {
     EvalResult evalResult;
     evalResult.Expression = this;
 
-    auto children = GetChildren();
-
-    auto conditionResult = children[0]->Evaluate(scope);
+    auto conditionResult = EvaluateChild(scope, 0);
     evalResult.Children.push_back(conditionResult);
 
-    auto branchResult =
-        ToBool(conditionResult.Result) ? children[1]->Evaluate(scope) : children[2]->Evaluate(scope);
+    auto branchResult = EvaluateChild(scope, ToBool(conditionResult.Result) ? 1 : 2);
     evalResult.Children.push_back(branchResult);
     evalResult.Result = branchResult.Result;
 

@@ -76,14 +76,14 @@ inline bool is_mq() {
     return ctx->GetDungeon(dungeonKey)->IsMQ();
 }
 
-inline bool any_age(ConditionFn condition) {
+inline bool any_age(ConditionFnCap condition) {
     return AnyAgeTime(condition);
 }
 
 inline bool spirit_shared(
-    RandomizerRegion region, ConditionFn condition, bool anyAge = false, RandomizerRegion otherRegion = RR_NONE,
-    ConditionFn otherCondition = [] { return false; }, RandomizerRegion thirdRegion = RR_NONE,
-    ConditionFn thirdCondition = [] { return false; }) {
+    RandomizerRegion region, ConditionFnCap condition, bool anyAge = false, RandomizerRegion otherRegion = RR_NONE,
+    ConditionFnCap otherCondition = [] { return false; }, RandomizerRegion thirdRegion = RR_NONE,
+    ConditionFnCap thirdCondition = [] { return false; }) {
     return SpiritShared(region, condition, anyAge, otherRegion, otherCondition, thirdRegion, thirdCondition);
 }
 

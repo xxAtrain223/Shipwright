@@ -451,9 +451,9 @@ EvalResult ComparisonExpression::Evaluate(VariableScope& scope) const {
             const auto l = static_cast<ComparisonType>(a);
             const auto r = static_cast<ComparisonType>(b);
 
-            if (_operation == "==")
+            if (_operation == "==" || _operation == "is")
                 return l == r;
-            if (_operation == "!=")
+            if (_operation == "!=" || _operation == "is not")
                 return l != r;
             if (_operation == "<")
                 return l < r;
@@ -664,4 +664,170 @@ std::vector<std::pair<ImVec4, std::string>> TernaryExpression::GetDrawingSegment
              { fontColors[GetChildColorIndex(1, startColorIndex)], WrapParentheses(this, children[1]) },
              { ImGui::GetStyleColorVec4(ImGuiCol_Text), " : " },
              { fontColors[GetChildColorIndex(2, startColorIndex)], WrapParentheses(this, children[2]) } };
+}
+
+
+static constexpr std::string_view matchDiscriminantName = "$match";
+
+MatchExpression::MatchExpression(index_t discriminant, std::vector<index_t> arms) {
+    _children.push_back(discriminant);
+    _children.insert(_children.end(), arms.begin(), arms.end());
+}
+
+EvalResult MatchExpression::Evaluate(VariableScope& scope) const {
+    EvalResult evalResult;
+    evalResult.Expression = this;
+    evalResult.Result = false;
+    evalResult.Children.push_back(EvaluateChild(scope, 0));
+    const std::array names{ matchDiscriminantName };
+    ScopedParameterBindings binding(scope, names, evalResult.Children);
+
+    auto children = GetChildren();
+    bool active = false;
+    for (size_t i = 1; i < children.size(); ++i) {
+        auto arm = dynamic_cast<const MatchArm*>(children[i]);
+        assert(arm != nullptr);
+        auto armResult = active ? arm->EvaluateBody(scope) : arm->Evaluate(scope);
+        armResult.ChildIndex = i;
+        const bool matched = active || armResult.Children.size() == 2;
+        evalResult.Children.push_back(armResult);
+        if (matched) {
+            evalResult.Result = armResult.Result;
+            if (!arm->_fallThrough || i + 1 == children.size() || ToBool(armResult.Result)) {
+                break;
+            }
+            active = true;
+        }
+    }
+    return evalResult;
+}
+
+std::string MatchExpression::ToString() const {
+    auto children = GetChildren();
+    std::string result = "match " + children[0]->ToString() + " {";
+    for (size_t i = 1; i < children.size(); ++i) {
+        result += " " + children[i]->ToString();
+    }
+    return result + " }";
+}
+
+std::vector<std::pair<ImVec4, std::string>> MatchExpression::GetDrawingSegments(size_t startColorIndex) const {
+    auto children = GetChildren();
+    const auto textColor = ImGui::GetStyleColorVec4(ImGuiCol_Text);
+    std::vector<std::pair<ImVec4, std::string>> segments = {
+        { textColor, "match " },
+        { fontColors[GetChildColorIndex(0, startColorIndex)], children[0]->ToString() },
+        { textColor, " {" },
+    };
+    for (size_t i = 1; i < children.size(); ++i) {
+        segments.push_back({ textColor, " " });
+        segments.push_back({ fontColors[GetChildColorIndex(i, startColorIndex)], children[i]->ToString() });
+    }
+    segments.push_back({ textColor, " }" });
+    return segments;
+}
+
+MatchArm::MatchArm(index_t patterns, index_t expression, bool fallThrough) {
+    _children.push_back(patterns);
+    _children.push_back(expression);
+    _fallThrough = fallThrough;
+}
+
+EvalResult MatchArm::Evaluate(VariableScope& scope) const {
+    EvalResult evalResult;
+    evalResult.Expression = this;
+    evalResult.Children.push_back(EvaluateChild(scope, 0));
+    if (ToBool(evalResult.Children[0].Result)) {
+        evalResult.Children.push_back(EvaluateChild(scope, 1));
+        evalResult.Result = evalResult.Children.back().Result;
+    } else {
+        evalResult.Result = false;
+    }
+    return evalResult;
+}
+
+EvalResult MatchArm::EvaluateBody(VariableScope& scope) const {
+    EvalResult evalResult;
+    evalResult.Expression = this;
+    evalResult.Children.push_back(EvaluateChild(scope, 1));
+    evalResult.Result = evalResult.Children[0].Result;
+    return evalResult;
+}
+
+std::string MatchArm::ToString() const {
+    auto children = GetChildren();
+    return children[0]->ToString() + ": " + children[1]->ToString() + (_fallThrough ? " or" : "");
+}
+
+std::vector<std::pair<ImVec4, std::string>> MatchArm::GetDrawingSegments(size_t startColorIndex) const {
+    auto children = GetChildren();
+    const auto textColor = ImGui::GetStyleColorVec4(ImGuiCol_Text);
+    std::vector<std::pair<ImVec4, std::string>> segments = {
+        { fontColors[GetChildColorIndex(0, startColorIndex)], children[0]->ToString() },
+        { textColor, ": " },
+        { fontColors[GetChildColorIndex(1, startColorIndex)], children[1]->ToString() },
+    };
+    if (_fallThrough) {
+        segments.push_back({ textColor, " or" });
+    }
+    return segments;
+}
+
+MatchArmPatterns::MatchArmPatterns(std::vector<index_t> children) {
+    _children.insert(_children.end(), children.begin(), children.end());
+}
+
+EvalResult MatchArmPatterns::Evaluate(VariableScope& scope) const {
+    EvalResult evalResult;
+    evalResult.Expression = this;
+    evalResult.Result = _children.empty();
+    if (_children.empty()) {
+        return evalResult;
+    }
+
+    const auto discriminant = scope.get(matchDiscriminantName);
+    for (size_t i = 0; i < _children.size(); ++i) {
+        auto patternResult = EvaluateChild(scope, i);
+        evalResult.Children.push_back(patternResult);
+        const bool matched = std::visit([](auto a, auto b) -> bool {
+            if constexpr (std::is_integral_v<decltype(a)> && std::is_integral_v<decltype(b)>) {
+                using ComparisonType = decltype(+a + +b);
+                return static_cast<ComparisonType>(a) == static_cast<ComparisonType>(b);
+            } else {
+                throw std::runtime_error("Cannot compare condition values");
+            }
+        }, discriminant, patternResult.Result);
+        if (matched) {
+            evalResult.Result = true;
+            break;
+        }
+    }
+    return evalResult;
+}
+
+std::string MatchArmPatterns::ToString() const {
+    if (_children.empty()) {
+        return "_";
+    }
+    auto children = GetChildren();
+    std::string result = children[0]->ToString();
+    for (size_t i = 1; i < children.size(); ++i) {
+        result += " or " + children[i]->ToString();
+    }
+    return result;
+}
+
+std::vector<std::pair<ImVec4, std::string>> MatchArmPatterns::GetDrawingSegments(size_t startColorIndex) const {
+    if (_children.empty()) {
+        return { { ImGui::GetStyleColorVec4(ImGuiCol_Text), "_" } };
+    }
+    auto children = GetChildren();
+    std::vector<std::pair<ImVec4, std::string>> segments;
+    for (size_t i = 0; i < children.size(); ++i) {
+        if (i != 0) {
+            segments.push_back({ ImGui::GetStyleColorVec4(ImGuiCol_Text), " or " });
+        }
+        segments.push_back({ fontColors[GetChildColorIndex(i, startColorIndex)], children[i]->ToString() });
+    }
+    return segments;
 }

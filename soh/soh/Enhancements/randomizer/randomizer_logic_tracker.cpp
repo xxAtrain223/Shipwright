@@ -663,24 +663,26 @@ static bool HasExpressionChildren(const ExpressionTable::ExpressionRow& row) {
 }
 
 static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTable& table,
-                              ExpressionTable::ExpressionRow& row, int level);
+                              ExpressionTable::ExpressionRow& row, int level, size_t startColorIndex = 0);
 
 static void DrawExpressionChildren(const LogicTrackerNode& node, const ExpressionTable& table,
-                                   ExpressionTable::ExpressionRow& row, int level) {
-    for (auto& child : row.Children) {
+                                   ExpressionTable::ExpressionRow& row, int level, size_t startColorIndex) {
+    for (size_t i = 0; i < row.Children.size(); ++i) {
+        auto& child = row.Children[i];
+        const auto childColorIndex = row.Expression->GetChildColorIndex(i, startColorIndex);
         if (dynamic_cast<const ParameterExpression*>(row.Expression)) {
-            DrawExpressionChildren(node, table, child, level);
+            DrawExpressionChildren(node, table, child, level, childColorIndex);
         } else {
-            DrawExpressionRow(node, table, child, level);
+            DrawExpressionRow(node, table, child, level, childColorIndex);
         }
     }
     for (auto& body : row.ConditionBodies) {
-        DrawExpressionChildren(node, table, body, level);
+        DrawExpressionChildren(node, table, body, level, startColorIndex);
     }
 }
 
 static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTable& table,
-                              ExpressionTable::ExpressionRow& row, int level) {
+                              ExpressionTable::ExpressionRow& row, int level, size_t startColorIndex) {
     ImGui::TableNextRow();
     ImGui::PushID(&row);
     ImGui::PushFont(OTRGlobals::Instance->fontMono);
@@ -737,7 +739,7 @@ static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTabl
     }
 
     ImGui::TableNextColumn();
-    expression.Draw();
+    expression.Draw(startColorIndex);
     if (!row.ErrorMessage.empty()) {
         ImGui::TextWrapped("%s", row.ErrorMessage.c_str());
     }
@@ -761,7 +763,7 @@ static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTabl
     }
 
     if (row.Expanded) {
-        DrawExpressionChildren(node, table, row, level + 1);
+        DrawExpressionChildren(node, table, row, level + 1, startColorIndex);
     }
 
     if (level > 0) {

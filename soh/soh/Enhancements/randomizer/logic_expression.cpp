@@ -8,12 +8,11 @@
 #include <utility>
 
 static auto fontColors = std::to_array({
-    ImVec4(0.5f, 0.5f, 1.0f, 1.0f), // Blue
-    ImVec4(0.5f, 1.0f, 0.5f, 1.0f), // Green
-    ImVec4(1.0f, 0.5f, 0.5f, 1.0f), // Red
-    ImVec4(1.0f, 1.0f, 0.5f, 1.0f), // Yellow
-    ImVec4(1.0f, 0.5f, 1.0f, 1.0f), // Magenta
-    ImVec4(0.5f, 1.0f, 1.0f, 1.0f), // Cyan
+    ImVec4(138.0f / 255.0f, 173.0f / 255.0f, 224.0f / 255.0f, 1.0f), // Blue
+    ImVec4(145.0f / 255.0f, 191.0f / 255.0f, 137.0f / 255.0f, 1.0f), // Sage green
+    ImVec4(220.0f / 255.0f, 145.0f / 255.0f, 133.0f / 255.0f, 1.0f), // Coral
+    ImVec4(222.0f / 255.0f, 196.0f / 255.0f, 119.0f / 255.0f, 1.0f), // Gold
+    ImVec4(179.0f / 255.0f, 157.0f / 255.0f, 219.0f / 255.0f, 1.0f), // Cool violet
 });
 
 static bool NeedsParentheses(const LogicExpression* parent, const LogicExpression* child) {
@@ -88,13 +87,17 @@ static void DrawColoredWrappedText(const std::vector<std::pair<ImVec4, std::stri
     ImGui::SetCursorScreenPos(ImVec2(pos.x, y + fontSize));
 }
 
-void LogicExpression::Draw() const {
-    auto drawingSegments = GetDrawingSegments();
+void LogicExpression::Draw(size_t startColorIndex) const {
+    auto drawingSegments = GetDrawingSegments(startColorIndex);
     DrawColoredWrappedText(drawingSegments);
 }
 
-std::vector<std::pair<ImVec4, std::string>> LogicExpression::GetDrawingSegments() const {
-    return { { ImGui::GetStyleColorVec4(ImGuiCol_Text), ToString().c_str() } };
+std::vector<std::pair<ImVec4, std::string>> LogicExpression::GetDrawingSegments(size_t startColorIndex) const {
+    return { { fontColors[startColorIndex % fontColors.size()], ToString() } };
+}
+
+size_t LogicExpression::GetChildColorIndex(size_t childIndex, size_t startColorIndex) const {
+    return (startColorIndex % fontColors.size() + childIndex % fontColors.size()) % fontColors.size();
 }
 
 void LogicExpression::ResolveChildren() {
@@ -238,8 +241,8 @@ std::string ConditionExpression::ToString() const {
     return GetChildren()[0]->ToString();
 }
 
-std::vector<std::pair<ImVec4, std::string>> ConditionExpression::GetDrawingSegments() const {
-    return GetChildren()[0]->GetDrawingSegments();
+std::vector<std::pair<ImVec4, std::string>> ConditionExpression::GetDrawingSegments(size_t startColorIndex) const {
+    return GetChildren()[0]->GetDrawingSegments(GetChildColorIndex(0, startColorIndex));
 }
 
 InvokeExpression::InvokeExpression(index_t callee) {
@@ -259,8 +262,8 @@ std::string InvokeExpression::ToString() const {
     return WrapParentheses(this, GetChildren()[0]) + "()";
 }
 
-std::vector<std::pair<ImVec4, std::string>> InvokeExpression::GetDrawingSegments() const {
-    return { { fontColors[0], WrapParentheses(this, GetChildren()[0]) },
+std::vector<std::pair<ImVec4, std::string>> InvokeExpression::GetDrawingSegments(size_t startColorIndex) const {
+    return { { fontColors[GetChildColorIndex(0, startColorIndex)], WrapParentheses(this, GetChildren()[0]) },
              { ImGui::GetStyleColorVec4(ImGuiCol_Text), "()" } };
 }
 
@@ -280,11 +283,11 @@ std::string BinaryExpression::ToString() const {
     return str;
 }
 
-std::vector<std::pair<ImVec4, std::string>> BinaryExpression::GetDrawingSegments() const {
+std::vector<std::pair<ImVec4, std::string>> BinaryExpression::GetDrawingSegments(size_t startColorIndex) const {
     std::vector<std::pair<ImVec4, std::string>> segments;
     auto children = GetChildren();
     for (size_t i = 0; i < children.size(); i++) {
-        segments.emplace_back(fontColors[i % fontColors.size()], WrapParentheses(this, children[i]));
+        segments.emplace_back(fontColors[GetChildColorIndex(i, startColorIndex)], WrapParentheses(this, children[i]));
         if (i < children.size() - 1) {
             segments.emplace_back(ImGui::GetStyleColorVec4(ImGuiCol_Text), " " + GetOperation() + " ");
         }
@@ -378,9 +381,9 @@ std::string NotExpression::ToString() const {
     return "not " + WrapParentheses(this, GetChildren()[0]);
 }
 
-std::vector<std::pair<ImVec4, std::string>> NotExpression::GetDrawingSegments() const {
+std::vector<std::pair<ImVec4, std::string>> NotExpression::GetDrawingSegments(size_t startColorIndex) const {
     return { { ImGui::GetStyleColorVec4(ImGuiCol_Text), "not " },
-             { fontColors[0], WrapParentheses(this, GetChildren()[0]) } };
+             { fontColors[GetChildColorIndex(0, startColorIndex)], WrapParentheses(this, GetChildren()[0]) } };
 }
 
 ArithmeticExpression::ArithmeticExpression(std::string_view operation, std::vector<index_t> children)
@@ -478,12 +481,12 @@ std::string ComparisonExpression::ToString() const {
            WrapParentheses(this, children[1]);
 }
 
-std::vector<std::pair<ImVec4, std::string>> ComparisonExpression::GetDrawingSegments() const {
+std::vector<std::pair<ImVec4, std::string>> ComparisonExpression::GetDrawingSegments(size_t startColorIndex) const {
     auto children = GetChildren();
     return {
-        { fontColors[0], WrapParentheses(this, children[0]) },
+        { fontColors[GetChildColorIndex(0, startColorIndex)], WrapParentheses(this, children[0]) },
         { ImGui::GetStyleColorVec4(ImGuiCol_Text), " " + std::string(_operation) + " " },
-        { fontColors[1], WrapParentheses(this, children[1]) },
+        { fontColors[GetChildColorIndex(1, startColorIndex)], WrapParentheses(this, children[1]) },
     };
 }
 
@@ -547,16 +550,22 @@ ImVec4 ScaleRGB(ImVec4 color, float scale) {
     return scaled;
 }
 
-std::vector<std::pair<ImVec4, std::string>> FunctionCallExpression::GetDrawingSegments() const {
+size_t FunctionCallExpression::GetChildColorIndex(size_t childIndex, size_t startColorIndex) const {
+    return LogicExpression::GetChildColorIndex(childIndex < _parameterCount ? childIndex + 1 : 0, startColorIndex);
+}
+
+std::vector<std::pair<ImVec4, std::string>> FunctionCallExpression::GetDrawingSegments(size_t startColorIndex) const {
     auto children = GetChildren();
     std::vector<std::pair<ImVec4, std::string>> segments;
-    segments.emplace_back(fontColors[0], _functionName);
+    segments.emplace_back(fontColors[startColorIndex % fontColors.size()], _functionName);
     segments.emplace_back(ImGui::GetStyleColorVec4(ImGuiCol_Text), "(");
     for (size_t i = 0; i < _parameterCount; i++) {
         auto parameter = dynamic_cast<ParameterExpression*>(children[i]);
-        segments.emplace_back(ScaleRGB(fontColors[(i + 1) % fontColors.size()], 0.5f),
-                              std::string(parameter->_parameterName) + ": ");
-        segments.emplace_back(fontColors[(i + 1) % fontColors.size()], parameter->GetChildren()[0]->ToString());
+        const auto colorIndex = GetChildColorIndex(i, startColorIndex);
+        /*segments.emplace_back(ScaleRGB(fontColors[colorIndex], 0.5f),
+                              std::string(parameter->_parameterName) + ": ");*/
+        segments.emplace_back(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled), std::string(parameter->_parameterName) + ": ");
+        segments.emplace_back(fontColors[colorIndex], parameter->GetChildren()[0]->ToString());
         if (i < _parameterCount - 1) {
             segments.emplace_back(ImGui::GetStyleColorVec4(ImGuiCol_Text), ", ");
         }
@@ -595,12 +604,10 @@ std::string ParameterExpression::ToString() const {
     return std::string(_parameterName) + ": " + GetChildren()[0]->ToString();
 }
 
-std::vector<std::pair<ImVec4, std::string>> ParameterExpression::GetDrawingSegments() const {
-    std::vector<std::pair<ImVec4, std::string>> segments = {
-        { ScaleRGB(fontColors[(_parameterIndex + 1) % fontColors.size()], 0.75f),
-          std::string(_parameterName) + ": " }
-    };
-    auto childSegments = GetChildren()[0]->GetDrawingSegments();
+std::vector<std::pair<ImVec4, std::string>> ParameterExpression::GetDrawingSegments(size_t startColorIndex) const {
+    std::vector<std::pair<ImVec4, std::string>> segments = { { ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled),
+                                                               std::string(_parameterName) + ": " } };
+    auto childSegments = GetChildren()[0]->GetDrawingSegments(GetChildColorIndex(0, startColorIndex));
     segments.insert(segments.end(), childSegments.begin(), childSegments.end());
     return segments;
 }
@@ -622,8 +629,8 @@ std::string ValueExpression::ToString() const {
     return std::string(_expression);
 }
 
-std::vector<std::pair<ImVec4, std::string>> ValueExpression::GetDrawingSegments() const {
-    return { { fontColors[0], std::string(_expression) } };
+std::vector<std::pair<ImVec4, std::string>> ValueExpression::GetDrawingSegments(size_t startColorIndex) const {
+    return { { fontColors[startColorIndex % fontColors.size()], std::string(_expression) } };
 }
 
 TernaryExpression::TernaryExpression(index_t condition, index_t trueBranch, index_t falseBranch) {
@@ -650,11 +657,11 @@ std::string TernaryExpression::ToString() const {
            WrapParentheses(this, children[2]);
 }
 
-std::vector<std::pair<ImVec4, std::string>> TernaryExpression::GetDrawingSegments() const {
+std::vector<std::pair<ImVec4, std::string>> TernaryExpression::GetDrawingSegments(size_t startColorIndex) const {
     auto children = GetChildren();
-    return { { fontColors[0], WrapParentheses(this, children[0]) },
+    return { { fontColors[GetChildColorIndex(0, startColorIndex)], WrapParentheses(this, children[0]) },
              { ImGui::GetStyleColorVec4(ImGuiCol_Text), " ? " },
-             { fontColors[1], WrapParentheses(this, children[1]) },
+             { fontColors[GetChildColorIndex(1, startColorIndex)], WrapParentheses(this, children[1]) },
              { ImGui::GetStyleColorVec4(ImGuiCol_Text), " : " },
-             { fontColors[2], WrapParentheses(this, children[2]) } };
+             { fontColors[GetChildColorIndex(2, startColorIndex)], WrapParentheses(this, children[2]) } };
 }

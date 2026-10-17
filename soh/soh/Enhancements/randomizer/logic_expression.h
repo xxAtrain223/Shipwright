@@ -19,7 +19,7 @@ struct VariableScope;
 struct ConditionValue;
 struct ImVec4;
 
-using index_t = uint16_t;
+using index_t = uint32_t;
 using condition_t = std::shared_ptr<const ConditionValue>;
 using value_t = std::variant<bool, int8_t, int16_t, int32_t, uint8_t, uint16_t, uint32_t, condition_t>;
 using bindings_t = std::unordered_map<std::string, value_t>;

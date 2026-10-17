@@ -64,24 +64,32 @@ static void DrawColoredWrappedText(const std::vector<std::pair<ImVec4, std::stri
     float fontSize = ImGui::GetFontSize();
 
     for (const auto& [color, text] : segments) {
-        std::istringstream iss(text + " ");
-        std::string word;
-        bool firstWordInSegment = true;
-        while (std::getline(iss, word, ' ')) {
-            std::string toDraw = word;
-            if (!firstWordInSegment) {
-                toDraw = " " + word;
+        std::istringstream lines(text);
+        std::string line;
+        while (std::getline(lines, line)) {
+            std::istringstream iss(line + " ");
+            std::string word;
+            bool firstWordInLine = true;
+            while (std::getline(iss, word, ' ')) {
+                std::string toDraw = word;
+                if (!firstWordInLine) {
+                    toDraw = " " + word;
+                }
+                ImVec2 textSize = ImGui::CalcTextSize(toDraw.c_str());
+                if (x + textSize.x > startX + wrapWidth && x > startX) {
+                    x = startX;
+                    y += fontSize;
+                    toDraw = word;
+                    textSize = ImGui::CalcTextSize(toDraw.c_str());
+                }
+                draw_list->AddText(font, fontSize, ImVec2(x, y), ImGui::ColorConvertFloat4ToU32(color), toDraw.c_str());
+                x += textSize.x;
+                firstWordInLine = false;
             }
-            ImVec2 textSize = ImGui::CalcTextSize(toDraw.c_str());
-            if (x + textSize.x > startX + wrapWidth && x > startX) {
+            if (!lines.eof()) {
                 x = startX;
                 y += fontSize;
-                toDraw = word;
-                textSize = ImGui::CalcTextSize(toDraw.c_str());
             }
-            draw_list->AddText(font, fontSize, ImVec2(x, y), ImGui::ColorConvertFloat4ToU32(color), toDraw.c_str());
-            x += textSize.x;
-            firstWordInSegment = false;
         }
     }
     ImGui::SetCursorScreenPos(ImVec2(pos.x, y + fontSize));
@@ -706,9 +714,9 @@ std::string MatchExpression::ToString() const {
     auto children = GetChildren();
     std::string result = "match " + children[0]->ToString() + " {";
     for (size_t i = 1; i < children.size(); ++i) {
-        result += " " + children[i]->ToString();
+        result += "\n" + children[i]->ToString();
     }
-    return result + " }";
+    return result + "\n}";
 }
 
 std::vector<std::pair<ImVec4, std::string>> MatchExpression::GetDrawingSegments(size_t startColorIndex) const {
@@ -720,10 +728,10 @@ std::vector<std::pair<ImVec4, std::string>> MatchExpression::GetDrawingSegments(
         { textColor, " {" },
     };
     for (size_t i = 1; i < children.size(); ++i) {
-        segments.push_back({ textColor, " " });
+        segments.push_back({ textColor, "\n" });
         segments.push_back({ fontColors[GetChildColorIndex(i, startColorIndex)], children[i]->ToString() });
     }
-    segments.push_back({ textColor, " }" });
+    segments.push_back({ textColor, "\n}" });
     return segments;
 }
 

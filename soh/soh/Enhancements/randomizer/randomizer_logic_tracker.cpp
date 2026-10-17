@@ -730,6 +730,10 @@ static void DrawExpressionChildren(const LogicTrackerNode& node, const Expressio
 
 static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTable& table,
                               ExpressionTable::ExpressionRow& row, int level, size_t startColorIndex) {
+    if (dynamic_cast<const MatchArmPatterns*>(row.Expression) && row.Children.empty()) {
+        return;
+    }
+
     ImGui::TableNextRow();
     ImGui::PushID(&row);
     ImGui::PushFont(OTRGlobals::Instance->fontMono);

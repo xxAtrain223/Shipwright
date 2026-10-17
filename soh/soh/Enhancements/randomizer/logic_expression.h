@@ -17,6 +17,7 @@
 
 struct VariableScope;
 struct ConditionValue;
+struct ImVec4;
 
 using index_t = uint16_t;
 using condition_t = std::shared_ptr<const ConditionValue>;
@@ -70,7 +71,9 @@ class LogicExpression {
 
     virtual std::string ToString() const = 0;
 
-    virtual void Draw() const;
+    virtual std::vector<std::pair<ImVec4, std::string>> GetDrawingSegments() const;
+
+    void Draw() const;
 
     void ResolveChildren();
 
@@ -143,7 +146,7 @@ class ConditionExpression : public LogicExpression {
 
     std::string ToString() const override;
 
-    void Draw() const override;
+    std::vector<std::pair<ImVec4, std::string>> GetDrawingSegments() const override;
 };
 
 class InvokeExpression : public LogicExpression {
@@ -154,7 +157,7 @@ class InvokeExpression : public LogicExpression {
 
     std::string ToString() const override;
 
-    void Draw() const override;
+    std::vector<std::pair<ImVec4, std::string>> GetDrawingSegments() const override;
 };
 
 class BinaryExpression : public LogicExpression {
@@ -163,9 +166,9 @@ class BinaryExpression : public LogicExpression {
 
     std::string ToString() const;
 
-    void Draw() const override;
-
     EvalResult Evaluate(VariableScope& scope) const override;
+
+    std::vector<std::pair<ImVec4, std::string>> GetDrawingSegments() const override;
 
   protected:
     virtual bool TryShortCircuit(const value_t&, value_t&) const;
@@ -207,7 +210,7 @@ class NotExpression : public LogicExpression {
 
     std::string ToString() const;
 
-    void Draw() const override;
+    std::vector<std::pair<ImVec4, std::string>> GetDrawingSegments() const override;
 };
 
 class ArithmeticExpression : public BinaryExpression {
@@ -233,7 +236,7 @@ class ComparisonExpression : public LogicExpression {
 
     std::string ToString() const;
 
-    void Draw() const override;
+    std::vector<std::pair<ImVec4, std::string>> GetDrawingSegments() const override;
 
   private:
     std::string_view _operation;
@@ -241,34 +244,50 @@ class ComparisonExpression : public LogicExpression {
 
 class FunctionCallExpression : public LogicExpression {
   public:
-    FunctionCallExpression(std::string_view functionName, std::vector<std::string_view> parameterNames,
-                           std::vector<index_t> parameters, index_t definition);
+    FunctionCallExpression(std::string_view functionName, std::vector<index_t> parameters, index_t definition);
 
     EvalResult Evaluate(VariableScope& scope) const override;
 
     std::string ToString() const;
 
-    void Draw() const override;
+    std::vector<std::pair<ImVec4, std::string>> GetDrawingSegments() const override;
 
   protected:
-    FunctionCallExpression(std::string_view functionName, std::vector<std::string_view> parameterNames,
-                           std::vector<index_t> parameters);
+    FunctionCallExpression(std::string_view functionName, std::vector<index_t> parameters);
 
     EvalResult EvaluateArguments(VariableScope& scope) const;
 
     std::string_view _functionName;
-    std::vector<std::string_view> _parameterNames;
+
+    size_t _parameterCount;
 };
 
 class ExternFunctionCallExpression : public FunctionCallExpression {
   public:
     ExternFunctionCallExpression(extern_function_t function, std::string_view functionName,
-                                 std::vector<std::string_view> parameterNames, std::vector<index_t> parameters);
+                                 std::vector<index_t> parameters);
 
     EvalResult Evaluate(VariableScope& scope) const override;
 
   private:
     extern_function_t _function;
+};
+
+class ParameterExpression : public LogicExpression {
+  public:
+    ParameterExpression(uint8_t parameterIndex, std::string_view parameterName, index_t child);
+
+    EvalResult Evaluate(VariableScope& scope) const override;
+
+    std::string ToString() const;
+
+    std::vector<std::pair<ImVec4, std::string>> GetDrawingSegments() const override;
+
+  private:
+    uint8_t _parameterIndex;
+    std::string_view _parameterName;
+
+    friend class FunctionCallExpression;
 };
 
 class ValueExpression : public LogicExpression {
@@ -279,7 +298,7 @@ class ValueExpression : public LogicExpression {
 
     std::string ToString() const;
 
-    void Draw() const override;
+    std::vector<std::pair<ImVec4, std::string>> GetDrawingSegments() const override;
 
   private:
     function_t _function;
@@ -295,5 +314,5 @@ class TernaryExpression : public LogicExpression {
 
     std::string ToString() const;
 
-    void Draw() const override;
+    std::vector<std::pair<ImVec4, std::string>> GetDrawingSegments() const override;
 };

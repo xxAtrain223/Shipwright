@@ -54,8 +54,47 @@ static std::string WrapParentheses(const LogicExpression* parent, const LogicExp
     return NeedsParentheses(parent, child) ? "(" + child->ToString() + ")" : child->ToString();
 }
 
+static void DrawColoredWrappedText(const std::vector<std::pair<ImVec4, std::string>>& segments) {
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    ImVec2 pos = ImGui::GetCursorScreenPos();
+    float wrapWidth = ImGui::GetContentRegionAvail().x;
+    float x = pos.x;
+    float y = pos.y;
+    float startX = x;
+    ImFont* font = ImGui::GetFont();
+    float fontSize = ImGui::GetFontSize();
+
+    for (const auto& [color, text] : segments) {
+        std::istringstream iss(text + " ");
+        std::string word;
+        bool firstWordInSegment = true;
+        while (std::getline(iss, word, ' ')) {
+            std::string toDraw = word;
+            if (!firstWordInSegment) {
+                toDraw = " " + word;
+            }
+            ImVec2 textSize = ImGui::CalcTextSize(toDraw.c_str());
+            if (x + textSize.x > startX + wrapWidth && x > startX) {
+                x = startX;
+                y += fontSize;
+                toDraw = word;
+                textSize = ImGui::CalcTextSize(toDraw.c_str());
+            }
+            draw_list->AddText(font, fontSize, ImVec2(x, y), ImGui::ColorConvertFloat4ToU32(color), toDraw.c_str());
+            x += textSize.x;
+            firstWordInSegment = false;
+        }
+    }
+    ImGui::SetCursorScreenPos(ImVec2(pos.x, y + fontSize));
+}
+
 void LogicExpression::Draw() const {
-    ImGui::TextWrapped("%s", ToString().c_str());
+    auto drawingSegments = GetDrawingSegments();
+    DrawColoredWrappedText(drawingSegments);
+}
+
+std::vector<std::pair<ImVec4, std::string>> LogicExpression::GetDrawingSegments() const {
+    return { { ImGui::GetStyleColorVec4(ImGuiCol_Text), ToString().c_str() } };
 }
 
 void LogicExpression::ResolveChildren() {
@@ -184,40 +223,6 @@ EvalResult Invoke(const value_t& value) {
     return result;
 }
 
-static void DrawColoredWrappedText(const std::vector<std::pair<ImVec4, std::string>>& segments) {
-    ImDrawList* draw_list = ImGui::GetWindowDrawList();
-    ImVec2 pos = ImGui::GetCursorScreenPos();
-    float wrapWidth = ImGui::GetContentRegionAvail().x;
-    float x = pos.x;
-    float y = pos.y;
-    float startX = x;
-    ImFont* font = ImGui::GetFont();
-    float fontSize = ImGui::GetFontSize();
-
-    for (const auto& [color, text] : segments) {
-        std::istringstream iss(text + " ");
-        std::string word;
-        bool firstWordInSegment = true;
-        while (std::getline(iss, word, ' ')) {
-            std::string toDraw = word;
-            if (!firstWordInSegment) {
-                toDraw = " " + word;
-            }
-            ImVec2 textSize = ImGui::CalcTextSize(toDraw.c_str());
-            if (x + textSize.x > startX + wrapWidth && x > startX) {
-                x = startX;
-                y += fontSize;
-                toDraw = word;
-                textSize = ImGui::CalcTextSize(toDraw.c_str());
-            }
-            draw_list->AddText(font, fontSize, ImVec2(x, y), ImGui::ColorConvertFloat4ToU32(color), toDraw.c_str());
-            x += textSize.x;
-            firstWordInSegment = false;
-        }
-    }
-    ImGui::SetCursorScreenPos(ImVec2(pos.x, y + fontSize));
-}
-
 ConditionExpression::ConditionExpression(index_t body) {
     _children = { body };
 }
@@ -233,8 +238,8 @@ std::string ConditionExpression::ToString() const {
     return GetChildren()[0]->ToString();
 }
 
-void ConditionExpression::Draw() const {
-    GetChildren()[0]->Draw();
+std::vector<std::pair<ImVec4, std::string>> ConditionExpression::GetDrawingSegments() const {
+    return GetChildren()[0]->GetDrawingSegments();
 }
 
 InvokeExpression::InvokeExpression(index_t callee) {
@@ -254,9 +259,9 @@ std::string InvokeExpression::ToString() const {
     return WrapParentheses(this, GetChildren()[0]) + "()";
 }
 
-void InvokeExpression::Draw() const {
-    DrawColoredWrappedText({ { fontColors[0], WrapParentheses(this, GetChildren()[0]) },
-                            { ImGui::GetStyleColorVec4(ImGuiCol_Text), "()" } });
+std::vector<std::pair<ImVec4, std::string>> InvokeExpression::GetDrawingSegments() const {
+    return { { fontColors[0], WrapParentheses(this, GetChildren()[0]) },
+             { ImGui::GetStyleColorVec4(ImGuiCol_Text), "()" } };
 }
 
 BinaryExpression::BinaryExpression(std::vector<index_t> children) {
@@ -275,7 +280,7 @@ std::string BinaryExpression::ToString() const {
     return str;
 }
 
-void BinaryExpression::Draw() const {
+std::vector<std::pair<ImVec4, std::string>> BinaryExpression::GetDrawingSegments() const {
     std::vector<std::pair<ImVec4, std::string>> segments;
     auto children = GetChildren();
     for (size_t i = 0; i < children.size(); i++) {
@@ -284,7 +289,7 @@ void BinaryExpression::Draw() const {
             segments.emplace_back(ImGui::GetStyleColorVec4(ImGuiCol_Text), " " + GetOperation() + " ");
         }
     }
-    DrawColoredWrappedText(segments);
+    return segments;
 }
 
 EvalResult BinaryExpression::Evaluate(VariableScope& scope) const {
@@ -373,9 +378,9 @@ std::string NotExpression::ToString() const {
     return "not " + WrapParentheses(this, GetChildren()[0]);
 }
 
-void NotExpression::Draw() const {
-    DrawColoredWrappedText(
-        { { ImGui::GetStyleColorVec4(ImGuiCol_Text), "not " }, { fontColors[0], WrapParentheses(this, GetChildren()[0]) } });
+std::vector<std::pair<ImVec4, std::string>> NotExpression::GetDrawingSegments() const {
+    return { { ImGui::GetStyleColorVec4(ImGuiCol_Text), "not " },
+             { fontColors[0], WrapParentheses(this, GetChildren()[0]) } };
 }
 
 ArithmeticExpression::ArithmeticExpression(std::string_view operation, std::vector<index_t> children)
@@ -473,34 +478,31 @@ std::string ComparisonExpression::ToString() const {
            WrapParentheses(this, children[1]);
 }
 
-void ComparisonExpression::Draw() const {
+std::vector<std::pair<ImVec4, std::string>> ComparisonExpression::GetDrawingSegments() const {
     auto children = GetChildren();
-    DrawColoredWrappedText({
+    return {
         { fontColors[0], WrapParentheses(this, children[0]) },
         { ImGui::GetStyleColorVec4(ImGuiCol_Text), " " + std::string(_operation) + " " },
         { fontColors[1], WrapParentheses(this, children[1]) },
-    });
+    };
 }
 
-FunctionCallExpression::FunctionCallExpression(std::string_view functionName,
-                                               std::vector<std::string_view> parameterNames,
-                       std::vector<index_t> parameters) {
+FunctionCallExpression::FunctionCallExpression(std::string_view functionName, std::vector<index_t> parameters) {
     _functionName = functionName;
-    _parameterNames = parameterNames;
     _children.insert(_children.end(), parameters.begin(), parameters.end());
+    _parameterCount = parameters.size();
 }
 
-FunctionCallExpression::FunctionCallExpression(std::string_view functionName,
-                                               std::vector<std::string_view> parameterNames,
-                        std::vector<index_t> parameters, index_t definition)
-    : FunctionCallExpression(functionName, parameterNames, parameters) {
+FunctionCallExpression::FunctionCallExpression(std::string_view functionName, std::vector<index_t> parameters,
+                                               index_t definition)
+    : FunctionCallExpression(functionName, parameters) {
     _children.push_back(definition);
 }
 
 EvalResult FunctionCallExpression::EvaluateArguments(VariableScope& scope) const {
     EvalResult evalResult;
     evalResult.Expression = this;
-    for (size_t i = 0; i < _parameterNames.size(); i++) {
+    for (size_t i = 0; i < _parameterCount; i++) {
         evalResult.Children.push_back(EvaluateChild(scope, i));
     }
     return evalResult;
@@ -508,9 +510,16 @@ EvalResult FunctionCallExpression::EvaluateArguments(VariableScope& scope) const
 
 EvalResult FunctionCallExpression::Evaluate(VariableScope& scope) const {
     auto evalResult = EvaluateArguments(scope);
-    ScopedParameterBindings bindings(scope, _parameterNames, evalResult.Children);
+    auto children = GetChildren();
 
-    auto functionResult = EvaluateChild(scope, GetChildren().size() - 1);
+    std::vector<std::string_view> parameterNames(_parameterCount);
+    for (size_t i = 0; i < _parameterCount; i++) {
+        auto parameter = dynamic_cast<ParameterExpression*>(children[i]);
+        parameterNames[i] = parameter->_parameterName;
+    }
+    ScopedParameterBindings bindings(scope, parameterNames, evalResult.Children);
+
+    auto functionResult = EvaluateChild(scope, _parameterCount);
     evalResult.Children.push_back(functionResult);
     evalResult.Result = functionResult.Result;
 
@@ -520,9 +529,9 @@ EvalResult FunctionCallExpression::Evaluate(VariableScope& scope) const {
 std::string FunctionCallExpression::ToString() const {
     auto children = GetChildren();
     std::string str = std::string(_functionName) + "(";
-    for (size_t i = 0; i < _parameterNames.size(); i++) {
-        str += std::string(_parameterNames[i]) + ": " + children[i]->ToString();
-        if (i < _parameterNames.size() - 1) {
+    for (size_t i = 0; i < _parameterCount; i++) {
+        str += children[i]->ToString();
+        if (i < _parameterCount - 1) {
             str += ", ";
         }
     }
@@ -530,26 +539,35 @@ std::string FunctionCallExpression::ToString() const {
     return str;
 }
 
-void FunctionCallExpression::Draw() const {
+ImVec4 ScaleRGB(ImVec4 color, float scale) {
+    auto scaled = color;
+    scaled.x *= scale;
+    scaled.y *= scale;
+    scaled.z *= scale;
+    return scaled;
+}
+
+std::vector<std::pair<ImVec4, std::string>> FunctionCallExpression::GetDrawingSegments() const {
     auto children = GetChildren();
     std::vector<std::pair<ImVec4, std::string>> segments;
     segments.emplace_back(fontColors[0], _functionName);
     segments.emplace_back(ImGui::GetStyleColorVec4(ImGuiCol_Text), "(");
-    for (size_t i = 0; i < _parameterNames.size(); i++) {
-        segments.emplace_back(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled),
-                                std::string(_parameterNames[i]) + ": ");
-        segments.emplace_back(fontColors[(i + 1) % fontColors.size()], children[i]->ToString());
-        if (i < _parameterNames.size() - 1) {
+    for (size_t i = 0; i < _parameterCount; i++) {
+        auto parameter = dynamic_cast<ParameterExpression*>(children[i]);
+        segments.emplace_back(ScaleRGB(fontColors[(i + 1) % fontColors.size()], 0.5f),
+                              std::string(parameter->_parameterName) + ": ");
+        segments.emplace_back(fontColors[(i + 1) % fontColors.size()], parameter->GetChildren()[0]->ToString());
+        if (i < _parameterCount - 1) {
             segments.emplace_back(ImGui::GetStyleColorVec4(ImGuiCol_Text), ", ");
         }
     }
     segments.emplace_back(ImGui::GetStyleColorVec4(ImGuiCol_Text), ")");
-    DrawColoredWrappedText(segments);
+    return segments;
 }
 
 ExternFunctionCallExpression::ExternFunctionCallExpression(extern_function_t function, std::string_view functionName,
-                                 std::vector<std::string_view> parameterNames, std::vector<index_t> parameters)
-    : FunctionCallExpression(functionName, parameterNames, parameters) {
+                                                           std::vector<index_t> parameters)
+    : FunctionCallExpression(functionName, parameters) {
     _function = function;
 }
 
@@ -558,6 +576,33 @@ EvalResult ExternFunctionCallExpression::Evaluate(VariableScope& scope) const {
     evalResult.Result = _function(evalResult.Children);
 
     return evalResult;
+}
+
+ParameterExpression::ParameterExpression(uint8_t parameterIndex, std::string_view parameterName, index_t child)
+    : _parameterIndex(parameterIndex), _parameterName(parameterName) {
+    _children = { child };
+}
+
+EvalResult ParameterExpression::Evaluate(VariableScope& scope) const {
+    EvalResult result;
+    result.Expression = this;
+    result.Children.push_back(EvaluateChild(scope, 0));
+    result.Result = result.Children[0].Result;
+    return result;
+}
+
+std::string ParameterExpression::ToString() const {
+    return std::string(_parameterName) + ": " + GetChildren()[0]->ToString();
+}
+
+std::vector<std::pair<ImVec4, std::string>> ParameterExpression::GetDrawingSegments() const {
+    std::vector<std::pair<ImVec4, std::string>> segments = {
+        { ScaleRGB(fontColors[(_parameterIndex + 1) % fontColors.size()], 0.75f),
+          std::string(_parameterName) + ": " }
+    };
+    auto childSegments = GetChildren()[0]->GetDrawingSegments();
+    segments.insert(segments.end(), childSegments.begin(), childSegments.end());
+    return segments;
 }
 
 ValueExpression::ValueExpression(function_t function, std::string_view expression, bool isEvent) {
@@ -577,8 +622,8 @@ std::string ValueExpression::ToString() const {
     return std::string(_expression);
 }
 
-void ValueExpression::Draw() const {
-    DrawColoredWrappedText({ { fontColors[0], std::string(_expression) } });
+std::vector<std::pair<ImVec4, std::string>> ValueExpression::GetDrawingSegments() const {
+    return { { fontColors[0], std::string(_expression) } };
 }
 
 TernaryExpression::TernaryExpression(index_t condition, index_t trueBranch, index_t falseBranch) {
@@ -605,13 +650,11 @@ std::string TernaryExpression::ToString() const {
            WrapParentheses(this, children[2]);
 }
 
-void TernaryExpression::Draw() const {
+std::vector<std::pair<ImVec4, std::string>> TernaryExpression::GetDrawingSegments() const {
     auto children = GetChildren();
-    DrawColoredWrappedText({
-        { fontColors[0], WrapParentheses(this, children[0]) },
-        { ImGui::GetStyleColorVec4(ImGuiCol_Text), " ? " },
-        { fontColors[1], WrapParentheses(this, children[1]) },
-        { ImGui::GetStyleColorVec4(ImGuiCol_Text), " : " },
-        { fontColors[2], WrapParentheses(this, children[2]) }
-    });
+    return { { fontColors[0], WrapParentheses(this, children[0]) },
+             { ImGui::GetStyleColorVec4(ImGuiCol_Text), " ? " },
+             { fontColors[1], WrapParentheses(this, children[1]) },
+             { ImGui::GetStyleColorVec4(ImGuiCol_Text), " : " },
+             { fontColors[2], WrapParentheses(this, children[2]) } };
 }

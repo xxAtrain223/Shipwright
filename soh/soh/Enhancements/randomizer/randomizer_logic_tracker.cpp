@@ -66,25 +66,25 @@ static value_t spirit_shared_adapter(std::span<EvalResult> arguments) {
 std::span<LogicExpression* const> GetExpressions() {
     static auto expressions = std::to_array<LogicExpression*>({
     /* 0*/ new AndExpression({1, 3}),
-    /* 1*/ new ExternFunctionCallExpression(has_adapter, "has", {"item"}, {2}),
+    /* 1*/ new ExternFunctionCallExpression(has_adapter, "has", {67}),
     /* 2*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_SPEAK_KOKIRI); }, "RG_SPEAK_KOKIRI", false),
     /* 3*/ new ComparisonExpression("<=", 4, 5),
-    /* 4*/ new ExternFunctionCallExpression(check_price_adapter, "check_price", {}, {}),
-    /* 5*/ new FunctionCallExpression("wallet_capacity", {}, {}, 6),
+    /* 4*/ new ExternFunctionCallExpression(check_price_adapter, "check_price", {}),
+    /* 5*/ new FunctionCallExpression("wallet_capacity", {}, 6),
     /* 6*/ new TernaryExpression(7, 9, 10),
-    /* 7*/ new ExternFunctionCallExpression(has_adapter, "has",  {"item"}, {8}),
+    /* 7*/ new ExternFunctionCallExpression(has_adapter, "has", {68}),
     /* 8*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_TYCOON_WALLET); }, "RG_TYCOON_WALLET", false),
     /* 9*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(999); }, "999", false),
     /*10*/ new TernaryExpression(11, 13, 14),
-    /*11*/ new ExternFunctionCallExpression(has_adapter, "has",  {"item"}, {12}),
+    /*11*/ new ExternFunctionCallExpression(has_adapter, "has", {69}),
     /*12*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_GIANT_WALLET); }, "RG_GIANT_WALLET", false),
     /*13*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(500); }, "500", false),
     /*14*/ new TernaryExpression(15, 17, 18),
-    /*15*/ new ExternFunctionCallExpression(has_adapter, "has",  {"item"}, {16}),
+    /*15*/ new ExternFunctionCallExpression(has_adapter, "has", {70}),
     /*16*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_ADULT_WALLET); }, "RG_ADULT_WALLET", false),
     /*17*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(200); }, "200", false),
     /*18*/ new TernaryExpression(19, 21, 22),
-    /*19*/ new ExternFunctionCallExpression(has_adapter, "has",  {"item"}, {20}),
+    /*19*/ new ExternFunctionCallExpression(has_adapter, "has", {71}),
     /*20*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_CHILD_WALLET); }, "RG_CHILD_WALLET", false),
     /*21*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(99); }, "99", false),
     /*22*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(0); }, "0", false),
@@ -133,27 +133,42 @@ std::span<LogicExpression* const> GetExpressions() {
     /*48*/ new ValueExpression([](VariableScope&) -> value_t { return int32_t{19}; }, "19", false),
     /*49*/ new ArithmeticExpression("-", {40, 39}),
 
-    /*50*/ new ExternFunctionCallExpression(any_age_adapter, "any_age", {"condition"}, {51}),
+    /*50*/ new ExternFunctionCallExpression(any_age_adapter, "any_age", {72}),
     /*51*/ new ConditionExpression(52),
     /*52*/ new AndExpression({53, 54}),
     /*53*/ new ValueExpression([](VariableScope&) -> value_t { return is_adult(); }, "is_adult()", false),
-    /*54*/ new ExternFunctionCallExpression(has_adapter, "has", {"item"}, {55}),
+    /*54*/ new ExternFunctionCallExpression(has_adapter, "has", {73}),
     /*55*/ new ValueExpression([](VariableScope&) -> value_t { return static_cast<int32_t>(RG_HOOKSHOT); }, "RG_HOOKSHOT", false),
 
     /*56*/ new InvokeExpression(57),
-    /*57*/ new FunctionCallExpression("make_condition", {"item"}, {55}, 58),
+    /*57*/ new FunctionCallExpression("make_condition", {74}, 58),
     /*58*/ new ConditionExpression(59),
-    /*59*/ new ExternFunctionCallExpression(has_adapter, "has", {"item"}, {60}),
+    /*59*/ new ExternFunctionCallExpression(has_adapter, "has", {75}),
     /*60*/ new ValueExpression([](VariableScope& scope) -> value_t { return scope.get("item"); }, "item", false),
 
     /*61*/ new ExternFunctionCallExpression(spirit_shared_adapter, "spirit_shared",
-               {"first_region", "first_condition", "any_age", "second_region", "second_condition", "third_region", "third_condition"},
-               {62, 63, 64, 65, 66, 65, 66}),
+               {76, 77, 78, 79, 80, 81, 82}),
     /*62*/ new ValueExpression([](VariableScope&) -> value_t { return static_cast<int32_t>(logic->CurrentRegionKey); }, "here", false),
     /*63*/ new ConditionExpression(52),
     /*64*/ new ValueExpression([](VariableScope&) -> value_t { return false; }, "false", false),
     /*65*/ new ValueExpression([](VariableScope&) -> value_t { return static_cast<int32_t>(RR_NONE); }, "RR_NONE", false),
     /*66*/ new ConditionExpression(64),
+    /*67*/ new ParameterExpression(0, "item", 2),
+    /*68*/ new ParameterExpression(0, "item", 8),
+    /*69*/ new ParameterExpression(0, "item", 12),
+    /*70*/ new ParameterExpression(0, "item", 16),
+    /*71*/ new ParameterExpression(0, "item", 20),
+    /*72*/ new ParameterExpression(0, "condition", 51),
+    /*73*/ new ParameterExpression(0, "item", 55),
+    /*74*/ new ParameterExpression(0, "item", 55),
+    /*75*/ new ParameterExpression(0, "item", 60),
+    /*76*/ new ParameterExpression(0, "first_region", 62),
+    /*77*/ new ParameterExpression(1, "first_condition", 63),
+    /*78*/ new ParameterExpression(2, "any_age", 64),
+    /*79*/ new ParameterExpression(3, "second_region", 65),
+    /*80*/ new ParameterExpression(4, "second_condition", 66),
+    /*81*/ new ParameterExpression(5, "third_region", 65),
+    /*82*/ new ParameterExpression(6, "third_condition", 66),
     });
 
     return { expressions.data(), expressions.size() };
@@ -630,7 +645,13 @@ static void CalculateShowRandomizerEvent() {
 }
 
 static bool HasExpressionChildren(const ExpressionTable::ExpressionRow& row) {
-    if (!row.Children.empty()) {
+    if (dynamic_cast<const ParameterExpression*>(row.Expression)) {
+        for (const auto& child : row.Children) {
+            if (HasExpressionChildren(child)) {
+                return true;
+            }
+        }
+    } else if (!row.Children.empty()) {
         return true;
     }
     for (const auto& body : row.ConditionBodies) {
@@ -647,7 +668,11 @@ static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTabl
 static void DrawExpressionChildren(const LogicTrackerNode& node, const ExpressionTable& table,
                                    ExpressionTable::ExpressionRow& row, int level) {
     for (auto& child : row.Children) {
-        DrawExpressionRow(node, table, child, level);
+        if (dynamic_cast<const ParameterExpression*>(row.Expression)) {
+            DrawExpressionChildren(node, table, child, level);
+        } else {
+            DrawExpressionRow(node, table, child, level);
+        }
     }
     for (auto& body : row.ConditionBodies) {
         DrawExpressionChildren(node, table, body, level);

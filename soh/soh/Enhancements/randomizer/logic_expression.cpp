@@ -3,6 +3,7 @@
 #include "imgui.h"
 
 #include <array>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -16,6 +17,7 @@ static auto fontColors = std::to_array({
 });
 
 static bool NeedsParentheses(const LogicExpression* parent, const LogicExpression* child) {
+    child = child->GetDisplayExpression();
     if (dynamic_cast<const FunctionCallExpression*>(child)) {
         return false;
     }
@@ -108,20 +110,151 @@ size_t LogicExpression::GetChildColorIndex(size_t childIndex, size_t startColorI
     return (startColorIndex % fontColors.size() + childIndex % fontColors.size()) % fontColors.size();
 }
 
-void LogicExpression::ResolveChildren() {
-    if (_childrenResolved) {
-        return;
-    }
-
-    auto expressions = GetExpressions();
-    for (auto& child : _children) {
-        const auto index = child.index;
-        assert(index < expressions.size());
-        child.expression = expressions[index];
-    }
-
-    _childrenResolved = true;
+const LogicExpression* LogicExpression::GetDisplayExpression() const {
+    return this;
 }
+
+LogicExpressionCache::LogicExpressionCache(uint64_t expressionCount, expression_factory_t factory)
+    : _expressionCount(expressionCount), _factory(factory) {
+    if (expressionCount > uint64_t{ std::numeric_limits<index_t>::max() } + 1 || !factory) {
+        throw std::invalid_argument("Invalid logic expression factory or count");
+    }
+}
+
+LogicExpression* LogicExpressionCache::GetExpression(index_t index) {
+    if (index >= _expressionCount) {
+        throw std::out_of_range("Logic expression index out of range: " + std::to_string(index));
+    }
+    auto [it, inserted] = _expressions.try_emplace(index);
+    if (!inserted) {
+        if (!it->second) {
+            throw std::logic_error("Recursive logic expression construction: " + std::to_string(index));
+        }
+        return it->second.get();
+    }
+    try {
+        auto expression = _factory(index);
+        if (!expression) {
+            throw std::runtime_error("Logic expression factory returned null: " + std::to_string(index));
+        }
+        auto* result = expression.get();
+        _expressions.at(index) = std::move(expression);
+        return result;
+    } catch (...) {
+        _expressions.erase(index);
+        throw;
+    }
+}
+
+uint64_t LogicExpressionCache::GetExpressionCount() const {
+    return _expressionCount;
+}
+
+size_t LogicExpressionCache::GetCachedExpressionCount() const {
+    size_t count = 0;
+    for (const auto& [index, expression] : _expressions) {
+        if (expression) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+size_t LogicRootKeyHash::operator()(const LogicRootKey& key) const {
+    size_t hash = std::hash<LogicRootKind>{}(key.Kind);
+    const auto combine = [&](size_t value) {
+        hash ^= value + size_t{ 0x9e3779b9 } + (hash << 6) + (hash >> 2);
+    };
+    combine(std::hash<std::string_view>{}(key.OwnerRegion));
+    combine(std::hash<std::string_view>{}(key.Entry));
+    combine(std::hash<uint32_t>{}(key.Occurrence));
+    return hash;
+}
+
+LogicRootRegistry::LogicRootRegistry(LogicRootMap roots, uint64_t expressionCount,
+                                     expression_resolver_t resolver)
+    : _roots(std::move(roots)), _resolver(resolver) {
+    if (expressionCount > uint64_t{ std::numeric_limits<index_t>::max() } + 1 || !resolver) {
+        throw std::invalid_argument("Invalid logic expression resolver or count");
+    }
+    for (const auto& [key, index] : _roots) {
+        switch (key.Kind) {
+            case LogicRootKind::Location:
+            case LogicRootKind::Event:
+            case LogicRootKind::Exit:
+                break;
+            default:
+                throw std::invalid_argument("Unknown logic root kind");
+        }
+        if (key.OwnerRegion.empty() || key.Entry.empty()) {
+            throw std::invalid_argument("Logic root owner and entry must not be empty");
+        }
+        if (index >= expressionCount) {
+            throw std::invalid_argument("Invalid logic root expression: " + std::string(key.OwnerRegion) +
+                                        "/" + std::string(key.Entry));
+        }
+    }
+}
+
+std::optional<index_t> LogicRootRegistry::Find(const LogicRootKey& key) const {
+    const auto root = _roots.find(key);
+    if (root != _roots.end()) {
+        return root->second;
+    }
+    return std::nullopt;
+}
+
+const LogicExpression* LogicRootRegistry::GetExpression(const LogicRootKey& key) const {
+    const auto root = Find(key);
+    if (!root) {
+        return nullptr;
+    }
+    const auto* expression = _resolver(*root);
+    if (!expression) {
+        throw std::runtime_error("Logic expression resolver returned null");
+    }
+    return expression;
+}
+
+template <LogicTarget T>
+ConversionExpression<T>::ConversionExpression(index_t operand) {
+    _children = { operand };
+}
+
+template <LogicTarget T>
+EvalResult ConversionExpression<T>::Evaluate(VariableScope& scope) const {
+    auto result = GetChildren()[0]->Evaluate(scope);
+    result.Result = ConvertValue<T>(result.Result);
+    return result;
+}
+
+template <LogicTarget T>
+std::string ConversionExpression<T>::ToString() const {
+    return GetChildren()[0]->ToString();
+}
+
+template <LogicTarget T>
+std::vector<std::pair<ImVec4, std::string>> ConversionExpression<T>::GetDrawingSegments(size_t startColorIndex) const {
+    return GetChildren()[0]->GetDrawingSegments(startColorIndex);
+}
+
+template <LogicTarget T>
+size_t ConversionExpression<T>::GetChildColorIndex(size_t, size_t startColorIndex) const {
+    return startColorIndex;
+}
+
+template <LogicTarget T>
+const LogicExpression* ConversionExpression<T>::GetDisplayExpression() const {
+    return GetChildren()[0]->GetDisplayExpression();
+}
+
+template class ConversionExpression<bool>;
+template class ConversionExpression<int8_t>;
+template class ConversionExpression<int16_t>;
+template class ConversionExpression<int32_t>;
+template class ConversionExpression<uint8_t>;
+template class ConversionExpression<uint16_t>;
+template class ConversionExpression<uint32_t>;
 
 EvalResult LogicExpression::EvaluateChild(VariableScope& scope, size_t childIndex) const {
     auto result = GetChildren()[childIndex]->Evaluate(scope);
@@ -550,7 +683,7 @@ std::string FunctionCallExpression::ToString() const {
     return str;
 }
 
-ImVec4 ScaleRGB(ImVec4 color, float scale) {
+static ImVec4 ScaleRGB(ImVec4 color, float scale) {
     auto scaled = color;
     scaled.x *= scale;
     scaled.y *= scale;
@@ -677,15 +810,19 @@ std::vector<std::pair<ImVec4, std::string>> TernaryExpression::GetDrawingSegment
 
 static constexpr std::string_view matchDiscriminantName = "$match";
 
-MatchExpression::MatchExpression(index_t discriminant, std::vector<index_t> arms) {
+template <typename T>
+    requires (LogicTarget<T> || std::is_same_v<T, value_t>)
+MatchExpression<T>::MatchExpression(index_t discriminant, std::vector<index_t> arms) {
     _children.push_back(discriminant);
     _children.insert(_children.end(), arms.begin(), arms.end());
 }
 
-EvalResult MatchExpression::Evaluate(VariableScope& scope) const {
+template <typename T>
+    requires (LogicTarget<T> || std::is_same_v<T, value_t>)
+EvalResult MatchExpression<T>::Evaluate(VariableScope& scope) const {
     EvalResult evalResult;
     evalResult.Expression = this;
-    evalResult.Result = false;
+    evalResult.Result = ConvertResult(false);
     evalResult.Children.push_back(EvaluateChild(scope, 0));
     const std::array names{ matchDiscriminantName };
     ScopedParameterBindings binding(scope, names, evalResult.Children);
@@ -700,8 +837,8 @@ EvalResult MatchExpression::Evaluate(VariableScope& scope) const {
         const bool matched = active || armResult.Children.size() == 2;
         evalResult.Children.push_back(armResult);
         if (matched) {
-            evalResult.Result = armResult.Result;
-            if (!arm->_fallThrough || i + 1 == children.size() || ToBool(armResult.Result)) {
+            evalResult.Result = ConvertResult(armResult.Result);
+            if (!arm->_fallThrough || i + 1 == children.size() || ToBool(evalResult.Result)) {
                 break;
             }
             active = true;
@@ -710,7 +847,9 @@ EvalResult MatchExpression::Evaluate(VariableScope& scope) const {
     return evalResult;
 }
 
-std::string MatchExpression::ToString() const {
+template <typename T>
+    requires (LogicTarget<T> || std::is_same_v<T, value_t>)
+std::string MatchExpression<T>::ToString() const {
     auto children = GetChildren();
     std::string result = "match " + children[0]->ToString() + " {";
     for (size_t i = 1; i < children.size(); ++i) {
@@ -719,7 +858,9 @@ std::string MatchExpression::ToString() const {
     return result + "\n}";
 }
 
-std::vector<std::pair<ImVec4, std::string>> MatchExpression::GetDrawingSegments(size_t startColorIndex) const {
+template <typename T>
+    requires (LogicTarget<T> || std::is_same_v<T, value_t>)
+std::vector<std::pair<ImVec4, std::string>> MatchExpression<T>::GetDrawingSegments(size_t startColorIndex) const {
     auto children = GetChildren();
     const auto textColor = ImGui::GetStyleColorVec4(ImGuiCol_Text);
     std::vector<std::pair<ImVec4, std::string>> segments = {
@@ -734,6 +875,15 @@ std::vector<std::pair<ImVec4, std::string>> MatchExpression::GetDrawingSegments(
     segments.push_back({ textColor, "\n}" });
     return segments;
 }
+
+template class MatchExpression<value_t>;
+template class MatchExpression<bool>;
+template class MatchExpression<int8_t>;
+template class MatchExpression<int16_t>;
+template class MatchExpression<int32_t>;
+template class MatchExpression<uint8_t>;
+template class MatchExpression<uint16_t>;
+template class MatchExpression<uint32_t>;
 
 MatchArm::MatchArm(index_t patterns, index_t expression, bool fallThrough) {
     _children.push_back(patterns);

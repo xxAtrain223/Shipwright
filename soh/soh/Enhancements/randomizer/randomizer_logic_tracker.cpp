@@ -4,12 +4,14 @@
 #include "entrance.h"
 #include "../../OTRGlobals.h"
 #include "logic_expression.h"
+#include "randomizerEnumStrings.h"
 
 #include <algorithm>
 #include <array>
 #include <deque>
 #include <stack>
 #include <ranges>
+#include <stdexcept>
 #include <utility>
 
 #include "logic/generated/soh/functions.gen.h"
@@ -68,159 +70,183 @@ static value_t setting_adapter(std::span<EvalResult> arguments) {
     return static_cast<value_t>(setting(key));
 }
 
-std::span<LogicExpression* const> GetExpressions() {
-    static auto expressions = std::to_array<LogicExpression*>({
-    /*  0*/ new AndExpression({1, 3}),
-    /*  1*/ new ExternFunctionCallExpression(has_adapter, "has", {67}),
-    /*  2*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_SPEAK_KOKIRI); }, "RG_SPEAK_KOKIRI", false),
-    /*  3*/ new ComparisonExpression("<=", 4, 5),
-    /*  4*/ new ExternFunctionCallExpression(check_price_adapter, "check_price", {}),
-    /*  5*/ new FunctionCallExpression("wallet_capacity", {}, 6),
-    /*  6*/ new TernaryExpression(7, 9, 10),
-    /*  7*/ new ExternFunctionCallExpression(has_adapter, "has", {68}),
-    /*  8*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_TYCOON_WALLET); }, "RG_TYCOON_WALLET", false),
-    /*  9*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(999); }, "999", false),
-    /* 10*/ new TernaryExpression(11, 13, 14),
-    /* 11*/ new ExternFunctionCallExpression(has_adapter, "has", {69}),
-    /* 12*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_GIANT_WALLET); }, "RG_GIANT_WALLET", false),
-    /* 13*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(500); }, "500", false),
-    /* 14*/ new TernaryExpression(15, 17, 18),
-    /* 15*/ new ExternFunctionCallExpression(has_adapter, "has", {70}),
-    /* 16*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_ADULT_WALLET); }, "RG_ADULT_WALLET", false),
-    /* 17*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(200); }, "200", false),
-    /* 18*/ new TernaryExpression(19, 21, 22),
-    /* 19*/ new ExternFunctionCallExpression(has_adapter, "has", {71}),
-    /* 20*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_CHILD_WALLET); }, "RG_CHILD_WALLET", false),
-    /* 21*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(99); }, "99", false),
-    /* 22*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(0); }, "0", false),
-    /* 23*/ new AndExpression({24, 26, 28, 30, 32, 34, 36}),
+static LogicExpression* CreatePrototypeExpression(index_t index) {
+    switch (index) {
+    case   0: return new AndExpression({1, 3});
+    case   1: return new ExternFunctionCallExpression(has_adapter, "has", {67});
+    case   2: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_SPEAK_KOKIRI); }, "RG_SPEAK_KOKIRI", false);
+    case   3: return new ComparisonExpression("<=", 4, 5);
+    case   4: return new ExternFunctionCallExpression(check_price_adapter, "check_price", {});
+    case   5: return new FunctionCallExpression("wallet_capacity", {}, 6);
+    case   6: return new TernaryExpression(7, 9, 10);
+    case   7: return new ExternFunctionCallExpression(has_adapter, "has", {68});
+    case   8: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_TYCOON_WALLET); }, "RG_TYCOON_WALLET", false);
+    case   9: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(999); }, "999", false);
+    case  10: return new TernaryExpression(11, 13, 14);
+    case  11: return new ExternFunctionCallExpression(has_adapter, "has", {69});
+    case  12: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_GIANT_WALLET); }, "RG_GIANT_WALLET", false);
+    case  13: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(500); }, "500", false);
+    case  14: return new TernaryExpression(15, 17, 18);
+    case  15: return new ExternFunctionCallExpression(has_adapter, "has", {70});
+    case  16: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_ADULT_WALLET); }, "RG_ADULT_WALLET", false);
+    case  17: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(200); }, "200", false);
+    case  18: return new TernaryExpression(19, 21, 22);
+    case  19: return new ExternFunctionCallExpression(has_adapter, "has", {71});
+    case  20: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_CHILD_WALLET); }, "RG_CHILD_WALLET", false);
+    case  21: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(99); }, "99", false);
+    case  22: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(0); }, "0", false);
+    case  23: return new AndExpression({24, 26, 28, 30, 32, 34, 36});
 
     // Multiple terms: 2 + 3 + 4 == 9
-    /* 24*/ new ComparisonExpression("==", 25, 38),
-    /* 25*/ new ArithmeticExpression("+", {39, 40, 41}),
+    case  24: return new ComparisonExpression("==", 25, 38);
+    case  25: return new ArithmeticExpression("+", {39, 40, 41});
 
     // Left-to-right subtraction: (20 - 3) - 2 == 15
-    /* 26*/ new ComparisonExpression("==", 27, 42),
-    /* 27*/ new ArithmeticExpression("-", {43, 40, 39}),
+    case  26: return new ComparisonExpression("==", 27, 42);
+    case  27: return new ArithmeticExpression("-", {43, 40, 39});
 
     // Multiple terms: 2 * 3 * 4 == 24
-    /* 28*/ new ComparisonExpression("==", 29, 44),
-    /* 29*/ new ArithmeticExpression("*", {39, 40, 41}),
+    case  28: return new ComparisonExpression("==", 29, 44);
+    case  29: return new ArithmeticExpression("*", {39, 40, 41});
 
     // Left-to-right division: (24 / 3) / 4 == 2
-    /* 30*/ new ComparisonExpression("==", 31, 39),
-    /* 31*/ new ArithmeticExpression("/", {44, 40, 41}),
+    case  30: return new ComparisonExpression("==", 31, 39);
+    case  31: return new ArithmeticExpression("/", {44, 40, 41});
 
     // Mixed operators: 2 + (3 * 4) == 14
-    /* 32*/ new ComparisonExpression("==", 33, 45),
-    /* 33*/ new ArithmeticExpression("+", {39, 46}),
+    case  32: return new ComparisonExpression("==", 33, 45);
+    case  33: return new ArithmeticExpression("+", {39, 46});
 
     // Explicit grouping: (2 + 3) * 4 == 20
-    /* 34*/ new ComparisonExpression("==", 35, 43),
-    /* 35*/ new ArithmeticExpression("*", {47, 41}),
+    case  34: return new ComparisonExpression("==", 35, 43);
+    case  35: return new ArithmeticExpression("*", {47, 41});
 
     // Right-hand grouping: 20 - (3 - 2) == 19
-    /* 36*/ new ComparisonExpression("==", 37, 48),
-    /* 37*/ new ArithmeticExpression("-", {43, 49}),
+    case  36: return new ComparisonExpression("==", 37, 48);
+    case  37: return new ArithmeticExpression("-", {43, 49});
 
-    /* 38*/ new ValueExpression([](VariableScope&) -> value_t { return int32_t{9}; }, "9", false),
-    /* 39*/ new ValueExpression([](VariableScope&) -> value_t { return int32_t{2}; }, "2", false),
-    /* 40*/ new ValueExpression([](VariableScope&) -> value_t { return int32_t{3}; }, "3", false),
-    /* 41*/ new ValueExpression([](VariableScope&) -> value_t { return int32_t{4}; }, "4", false),
-    /* 42*/ new ValueExpression([](VariableScope&) -> value_t { return int32_t{15}; }, "15", false),
-    /* 43*/ new ValueExpression([](VariableScope&) -> value_t { return int32_t{20}; }, "20", false),
-    /* 44*/ new ValueExpression([](VariableScope&) -> value_t { return int32_t{24}; }, "24", false),
-    /* 45*/ new ValueExpression([](VariableScope&) -> value_t { return int32_t{14}; }, "14", false),
+    case  38: return new ValueExpression([](VariableScope&) -> value_t { return int32_t{9}; }, "9", false);
+    case  39: return new ValueExpression([](VariableScope&) -> value_t { return int32_t{2}; }, "2", false);
+    case  40: return new ValueExpression([](VariableScope&) -> value_t { return int32_t{3}; }, "3", false);
+    case  41: return new ValueExpression([](VariableScope&) -> value_t { return int32_t{4}; }, "4", false);
+    case  42: return new ValueExpression([](VariableScope&) -> value_t { return int32_t{15}; }, "15", false);
+    case  43: return new ValueExpression([](VariableScope&) -> value_t { return int32_t{20}; }, "20", false);
+    case  44: return new ValueExpression([](VariableScope&) -> value_t { return int32_t{24}; }, "24", false);
+    case  45: return new ValueExpression([](VariableScope&) -> value_t { return int32_t{14}; }, "14", false);
 
-    /* 46*/ new ArithmeticExpression("*", {40, 41}),
-    /* 47*/ new ArithmeticExpression("+", {39, 40}),
+    case  46: return new ArithmeticExpression("*", {40, 41});
+    case  47: return new ArithmeticExpression("+", {39, 40});
 
-    /* 48*/ new ValueExpression([](VariableScope&) -> value_t { return int32_t{19}; }, "19", false),
-    /* 49*/ new ArithmeticExpression("-", {40, 39}),
+    case  48: return new ValueExpression([](VariableScope&) -> value_t { return int32_t{19}; }, "19", false);
+    case  49: return new ArithmeticExpression("-", {40, 39});
 
-    /* 50*/ new ExternFunctionCallExpression(any_age_adapter, "any_age", {72}),
-    /* 51*/ new ConditionExpression(52),
-    /* 52*/ new AndExpression({53, 54}),
-    /* 53*/ new ValueExpression([](VariableScope&) -> value_t { return is_adult(); }, "is_adult()", false),
-    /* 54*/ new ExternFunctionCallExpression(has_adapter, "has", {73}),
-    /* 55*/ new ValueExpression([](VariableScope&) -> value_t { return static_cast<int32_t>(RG_HOOKSHOT); }, "RG_HOOKSHOT", false),
+    case  50: return new ExternFunctionCallExpression(any_age_adapter, "any_age", {72});
+    case  51: return new ConditionExpression(52);
+    case  52: return new AndExpression({53, 54});
+    case  53: return new ValueExpression([](VariableScope&) -> value_t { return is_adult(); }, "is_adult()", false);
+    case  54: return new ExternFunctionCallExpression(has_adapter, "has", {73});
+    case  55: return new ValueExpression([](VariableScope&) -> value_t { return static_cast<int32_t>(RG_HOOKSHOT); }, "RG_HOOKSHOT", false);
 
-    /* 56*/ new InvokeExpression(57),
-    /* 57*/ new FunctionCallExpression("make_condition", {74}, 58),
-    /* 58*/ new ConditionExpression(59),
-    /* 59*/ new ExternFunctionCallExpression(has_adapter, "has", {75}),
-    /* 60*/ new ValueExpression([](VariableScope& scope) -> value_t { return scope.get("item"); }, "item", false),
+    case  56: return new InvokeExpression(57);
+    case  57: return new FunctionCallExpression("make_condition", {74}, 58);
+    case  58: return new ConditionExpression(59);
+    case  59: return new ExternFunctionCallExpression(has_adapter, "has", {75});
+    case  60: return new ValueExpression([](VariableScope& scope) -> value_t { return scope.get("item"); }, "item", false);
 
-    /* 61*/ new ExternFunctionCallExpression(spirit_shared_adapter, "spirit_shared",
-               {76, 77, 78, 79, 80, 81, 82}),
-    /* 62*/ new ValueExpression([](VariableScope&) -> value_t { return static_cast<int32_t>(logic->CurrentRegionKey); }, "here", false),
-    /* 63*/ new ConditionExpression(52),
-    /* 64*/ new ValueExpression([](VariableScope&) -> value_t { return false; }, "false", false),
-    /* 65*/ new ValueExpression([](VariableScope&) -> value_t { return static_cast<int32_t>(RR_NONE); }, "RR_NONE", false),
-    /* 66*/ new ConditionExpression(64),
-    /* 67*/ new ParameterExpression(0, "item", 2),
-    /* 68*/ new ParameterExpression(0, "item", 8),
-    /* 69*/ new ParameterExpression(0, "item", 12),
-    /* 70*/ new ParameterExpression(0, "item", 16),
-    /* 71*/ new ParameterExpression(0, "item", 20),
-    /* 72*/ new ParameterExpression(0, "condition", 51),
-    /* 73*/ new ParameterExpression(0, "item", 55),
-    /* 74*/ new ParameterExpression(0, "item", 55),
-    /* 75*/ new ParameterExpression(0, "item", 60),
-    /* 76*/ new ParameterExpression(0, "first_region", 62),
-    /* 77*/ new ParameterExpression(1, "first_condition", 63),
-    /* 78*/ new ParameterExpression(2, "any_age", 64),
-    /* 79*/ new ParameterExpression(3, "second_region", 65),
-    /* 80*/ new ParameterExpression(4, "second_condition", 66),
-    /* 81*/ new ParameterExpression(5, "third_region", 65),
-    /* 82*/ new ParameterExpression(6, "third_condition", 66),
+    case  61: return new ExternFunctionCallExpression(spirit_shared_adapter, "spirit_shared",
+               {76, 77, 78, 79, 80, 81, 82});
+    case  62: return new ValueExpression([](VariableScope&) -> value_t { return static_cast<int32_t>(logic->CurrentRegionKey); }, "here", false);
+    case  63: return new ConditionExpression(52);
+    case  64: return new ValueExpression([](VariableScope&) -> value_t { return false; }, "false", false);
+    case  65: return new ValueExpression([](VariableScope&) -> value_t { return static_cast<int32_t>(RR_NONE); }, "RR_NONE", false);
+    case  66: return new ConditionExpression(64);
+    case  67: return new ParameterExpression(0, "item", 2);
+    case  68: return new ParameterExpression(0, "item", 8);
+    case  69: return new ParameterExpression(0, "item", 12);
+    case  70: return new ParameterExpression(0, "item", 16);
+    case  71: return new ParameterExpression(0, "item", 20);
+    case  72: return new ParameterExpression(0, "condition", 51);
+    case  73: return new ParameterExpression(0, "item", 55);
+    case  74: return new ParameterExpression(0, "item", 55);
+    case  75: return new ParameterExpression(0, "item", 60);
+    case  76: return new ParameterExpression(0, "first_region", 62);
+    case  77: return new ParameterExpression(1, "first_condition", 63);
+    case  78: return new ParameterExpression(2, "any_age", 64);
+    case  79: return new ParameterExpression(3, "second_region", 65);
+    case  80: return new ParameterExpression(4, "second_condition", 66);
+    case  81: return new ParameterExpression(5, "third_region", 65);
+    case  82: return new ParameterExpression(6, "third_condition", 66);
 
-    /* 83*/ new FunctionCallExpression("has_boss_soul", {84}, {86}),
-    /* 84*/ new ParameterExpression(0, "item", 85),
-    /* 85*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_GOHMA_SOUL); }, "RG_GOHMA_SOUL", false),
-    /* 86*/ new OrExpression({87, 91}),
-    /* 87*/ new NotExpression(88),
-    /* 88*/ new ExternFunctionCallExpression(setting_adapter, "setting", {89}),
-    /* 89*/ new ParameterExpression(0, "key", 90),
-    /* 90*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RSK_SHUFFLE_BOSS_SOULS); }, "RSK_SHUFFLE_BOSS_SOULS", false),
-    /* 91*/ new MatchExpression(92, {93, 106, 118}),
-    /* 92*/ new ValueExpression([](VariableScope& scope) -> value_t { return scope.get("item"); }, "item", false),
+    case  83: return new FunctionCallExpression("has_boss_soul", {84}, {86});
+    case  84: return new ParameterExpression(0, "item", 85);
+    case  85: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_GOHMA_SOUL); }, "RG_GOHMA_SOUL", false);
+    case  86: return new OrExpression({87, 91});
+    case  87: return new NotExpression(88);
+    case  88: return new ExternFunctionCallExpression(setting_adapter, "setting", {89});
+    case  89: return new ParameterExpression(0, "key", 90);
+    case  90: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RSK_SHUFFLE_BOSS_SOULS); }, "RSK_SHUFFLE_BOSS_SOULS", false);
+    case  91: return new MatchExpression<>(92, {93, 106, 118});
+    case  92: return new ValueExpression([](VariableScope& scope) -> value_t { return scope.get("item"); }, "item", false);
 
-    /* 93*/ new MatchArm(94, 103, false), // TODO: Test fall-through
-    /* 94*/ new MatchArmPatterns({95, 96, 97, 98, 99, 100, 101, 102}),
-    /* 95*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_GOHMA_SOUL); }, "RG_GOHMA_SOUL", false),
-    /* 96*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_KING_DODONGO_SOUL); }, "RG_KING_DODONGO_SOUL", false),
-    /* 97*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_BARINADE_SOUL); }, "RG_BARINADE_SOUL", false),
-    /* 98*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_PHANTOM_GANON_SOUL); }, "RG_PHANTOM_GANON_SOUL", false),
-    /* 99*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_VOLVAGIA_SOUL); }, "RG_VOLVAGIA_SOUL", false),
-    /*100*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_MORPHA_SOUL); }, "RG_MORPHA_SOUL", false),
-    /*101*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_BONGO_BONGO_SOUL); }, "RG_BONGO_BONGO_SOUL", false),
-    /*102*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_TWINROVA_SOUL); }, "RG_TWINROVA_SOUL", false),
-    /*103*/ new ExternFunctionCallExpression(has_adapter, "has", {104}),
-    /*104*/ new ParameterExpression(0, "item", 105),
-    /*105*/ new ValueExpression([](VariableScope& scope) -> value_t { return scope.get("item"); }, "item", false),
+    case  93: return new MatchArm(94, 103, false); // TODO: Test fall-through
+    case  94: return new MatchArmPatterns({95, 96, 97, 98, 99, 100, 101, 102});
+    case  95: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_GOHMA_SOUL); }, "RG_GOHMA_SOUL", false);
+    case  96: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_KING_DODONGO_SOUL); }, "RG_KING_DODONGO_SOUL", false);
+    case  97: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_BARINADE_SOUL); }, "RG_BARINADE_SOUL", false);
+    case  98: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_PHANTOM_GANON_SOUL); }, "RG_PHANTOM_GANON_SOUL", false);
+    case  99: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_VOLVAGIA_SOUL); }, "RG_VOLVAGIA_SOUL", false);
+    case 100: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_MORPHA_SOUL); }, "RG_MORPHA_SOUL", false);
+    case 101: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_BONGO_BONGO_SOUL); }, "RG_BONGO_BONGO_SOUL", false);
+    case 102: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_TWINROVA_SOUL); }, "RG_TWINROVA_SOUL", false);
+    case 103: return new ExternFunctionCallExpression(has_adapter, "has", {104});
+    case 104: return new ParameterExpression(0, "item", 105);
+    case 105: return new ValueExpression([](VariableScope& scope) -> value_t { return scope.get("item"); }, "item", false);
 
-    /*106*/ new MatchArm(107, 109, false),
-    /*107*/ new MatchArmPatterns({108}),
-    /*108*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_GANON_SOUL); }, "RG_GANON_SOUL", false),
-    /*109*/ new OrExpression({110, 115}),
-    /*110*/ new ComparisonExpression("is not", 111, 114),
-    /*111*/ new ExternFunctionCallExpression(setting_adapter, "setting", {112}),
-    /*112*/ new ParameterExpression(0, "key", 113),
-    /*113*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RSK_SHUFFLE_BOSS_SOULS); }, "RSK_SHUFFLE_BOSS_SOULS", false),
-    /*114*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RO_BOSS_SOULS_ON_PLUS_GANON); }, "RO_BOSS_SOULS_ON_PLUS_GANON", false),
-    /*115*/ new ExternFunctionCallExpression(has_adapter, "has", {116}),
-    /*116*/ new ParameterExpression(0, "item", 117),
-    /*117*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_GANON_SOUL); }, "RG_GANON_SOUL", false),
+    case 106: return new MatchArm(107, 109, false);
+    case 107: return new MatchArmPatterns({108});
+    case 108: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_GANON_SOUL); }, "RG_GANON_SOUL", false);
+    case 109: return new OrExpression({110, 115});
+    case 110: return new ComparisonExpression("is not", 111, 114);
+    case 111: return new ExternFunctionCallExpression(setting_adapter, "setting", {112});
+    case 112: return new ParameterExpression(0, "key", 113);
+    case 113: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RSK_SHUFFLE_BOSS_SOULS); }, "RSK_SHUFFLE_BOSS_SOULS", false);
+    case 114: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RO_BOSS_SOULS_ON_PLUS_GANON); }, "RO_BOSS_SOULS_ON_PLUS_GANON", false);
+    case 115: return new ExternFunctionCallExpression(has_adapter, "has", {116});
+    case 116: return new ParameterExpression(0, "item", 117);
+    case 117: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(RG_GANON_SOUL); }, "RG_GANON_SOUL", false);
 
-    /*118*/ new MatchArm(119, 120, false),
-    /*119*/ new MatchArmPatterns({}),
-    /*120*/ new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(false); }, "never", false),
+    case 118: return new MatchArm(119, 120, false);
+    case 119: return new MatchArmPatterns({});
+    case 120: return new ValueExpression([](VariableScope& scope){ return static_cast<value_t>(false); }, "never", false);
+    default: throw std::out_of_range("Unknown prototype expression index");
+    }
+}
+
+uint64_t GetExpressionCount() {
+    return 121;
+}
+
+LogicExpression* GetExpression(index_t index) {
+    static LogicExpressionCache expressions(GetExpressionCount(), [](index_t id) -> std::unique_ptr<LogicExpression> {
+        return std::unique_ptr<LogicExpression>(CreatePrototypeExpression(id));
     });
-
-    return { expressions.data(), expressions.size() };
+    return expressions.GetExpression(index);
 }
 // clang-format on
+
+const LogicRootMap& GetLogicRoots() {
+    static const LogicRootMap roots{
+        { { LogicRootKind::Location, "RR_KF_KOKIRI_SHOP", "RC_KF_SHOP_ITEM_1" }, 0 },
+        { { LogicRootKind::Location, "RR_KF_KOKIRI_SHOP", "RC_KF_SHOP_ITEM_2" }, 0 },
+        { { LogicRootKind::Location, "RR_KF_KOKIRI_SHOP", "RC_KF_SHOP_ITEM_3" }, 0 },
+        { { LogicRootKind::Location, "RR_KF_KOKIRI_SHOP", "RC_KF_SHOP_ITEM_4" }, 0 },
+        { { LogicRootKind::Location, "RR_KF_KOKIRI_SHOP", "RC_KF_SHOP_ITEM_5" }, 0 },
+        { { LogicRootKind::Location, "RR_KF_KOKIRI_SHOP", "RC_KF_SHOP_ITEM_6" }, 0 },
+        { { LogicRootKind::Location, "RR_KF_KOKIRI_SHOP", "RC_KF_SHOP_ITEM_7" }, 0 },
+        { { LogicRootKind::Location, "RR_KF_KOKIRI_SHOP", "RC_KF_SHOP_ITEM_8" }, 0 },
+    };
+    return roots;
+}
 
 static std::string ToString(const value_t& value) {
     return std::visit(
@@ -253,6 +279,7 @@ struct ExpressionTable {
         std::optional<value_t> ChildNight;
         std::optional<value_t> AdultDay;
         std::optional<value_t> AdultNight;
+        bool ChildrenInitialized = false;
         bool Expanded = false;
         std::string ErrorMessage;
     };
@@ -386,28 +413,36 @@ size_t clearNodesAfterNodeID = -1;
 std::vector<LogicTrackerNode> nodes;
 
 static ExpressionTable::ExpressionRow CreateExpressionRows(const LogicExpression* expression) {
+    expression = expression->GetDisplayExpression();
     ExpressionTable::ExpressionRow row;
     row.Expression = expression;
     row.Expanded = false;
-
-    if (dynamic_cast<const ConditionExpression*>(expression)) {
-        return row;
-    }
-
-    const auto& children = expression->GetChildren();
-    row.Children.reserve(children.size());
-    for (const auto& child : children) {
-        row.Children.emplace_back(CreateExpressionRows(child));
-    }
-
     return row;
+}
+
+static void EnsureExpressionChildren(ExpressionTable::ExpressionRow& row) {
+    if (row.ChildrenInitialized || !row.Expression) {
+        return;
+    }
+    if (!dynamic_cast<const ConditionExpression*>(row.Expression)) {
+        const auto children = row.Expression->GetChildren();
+        std::vector<ExpressionTable::ExpressionRow> rows;
+        rows.reserve(children.size());
+        for (const auto* child : children) {
+            rows.emplace_back(CreateExpressionRows(child));
+        }
+        row.Children = std::move(rows);
+    }
+    row.ChildrenInitialized = true;
 }
 
 enum class AgeTime { ChildDay, ChildNight, AdultDay, AdultNight };
 
 static void PopulateExpressionValues(ExpressionTable::ExpressionRow& row, const EvalResult& eval,
                                      AgeTime ageTime) {
-    const auto& displayed = eval.Invocation ? *eval.Invocation : eval;
+    EnsureExpressionChildren(row);
+    const auto& invocation = eval.Invocation;
+    const auto& displayed = std::holds_alternative<condition_t>(eval.Result) && invocation ? *invocation : eval;
     std::optional<value_t> value;
     if (!std::holds_alternative<condition_t>(displayed.Result)) {
         value = displayed.Result;
@@ -425,20 +460,19 @@ static void PopulateExpressionValues(ExpressionTable::ExpressionRow& row, const 
     for (const auto& child : eval.Children) {
         assert(child.ChildIndex < row.Children.size());
         auto& rowChild = row.Children.at(child.ChildIndex);
-        assert(rowChild.Expression == child.Expression);
+        assert(rowChild.Expression == child.Expression->GetDisplayExpression());
         PopulateExpressionValues(rowChild, child, ageTime);
     }
 
-    if (eval.Invocation) {
-        const auto& invocation = *eval.Invocation;
+    if (invocation) {
         auto it = std::find_if(row.ConditionBodies.begin(), row.ConditionBodies.end(), [&](const auto& existing) {
-            return existing.Expression == invocation.Expression;
+            return existing.Expression == invocation->Expression->GetDisplayExpression();
         });
         if (it == row.ConditionBodies.end()) {
-            row.ConditionBodies.push_back(CreateExpressionRows(invocation.Expression));
+            row.ConditionBodies.push_back(CreateExpressionRows(invocation->Expression));
             it = std::prev(row.ConditionBodies.end());
         }
-        PopulateExpressionValues(*it, invocation, ageTime);
+        PopulateExpressionValues(*it, *invocation, ageTime);
     }
 }
 
@@ -461,12 +495,16 @@ static std::tuple<bool, bool, bool> CalculateCombines(const ExpressionTable::Exp
     return { combineAll, combineChild, combineAdult };
 }
 
-static void PopulateConnectionExpression(LogicTrackerNode::Connection& connection, const std::string& expressionStr) {
-    auto expression = GetExpressions()[83];
-
+static void PopulateConnectionExpression(LogicTrackerNode::Connection& connection, const LogicRootKey& key) {
     LogicStateGuard logicStateGuard;
 
     try {
+        static const LogicRootRegistry roots(GetLogicRoots(), GetExpressionCount());
+        const auto* expression = roots.GetExpression(key);
+        if (!expression) {
+            throw std::runtime_error("No tracker root registered for " + std::string(key.OwnerRegion) + " / " +
+                                     std::string(key.Entry));
+        }
         logic->IsChild = false;
         logic->IsAdult = false;
         logic->AtDay = false;
@@ -479,7 +517,7 @@ static void PopulateConnectionExpression(LogicTrackerNode::Connection& connectio
             logic->AtDay = true;
 
             VariableScope scope;
-            const auto& eval = connection.ExpressionTable.Root.Expression->Evaluate(scope);
+            const auto& eval = expression->Evaluate(scope);
             PopulateExpressionValues(connection.ExpressionTable.Root, eval, AgeTime::ChildDay);
 
             logic->IsChild = false;
@@ -490,7 +528,7 @@ static void PopulateConnectionExpression(LogicTrackerNode::Connection& connectio
             logic->AtNight = true;
 
             VariableScope scope;
-            const auto& eval = connection.ExpressionTable.Root.Expression->Evaluate(scope);
+            const auto& eval = expression->Evaluate(scope);
             PopulateExpressionValues(connection.ExpressionTable.Root, eval, AgeTime::ChildNight);
 
             logic->IsChild = false;
@@ -501,7 +539,7 @@ static void PopulateConnectionExpression(LogicTrackerNode::Connection& connectio
             logic->AtDay = true;
 
             VariableScope scope;
-            const auto& eval = connection.ExpressionTable.Root.Expression->Evaluate(scope);
+            const auto& eval = expression->Evaluate(scope);
             PopulateExpressionValues(connection.ExpressionTable.Root, eval, AgeTime::AdultDay);
 
             logic->IsAdult = false;
@@ -512,7 +550,7 @@ static void PopulateConnectionExpression(LogicTrackerNode::Connection& connectio
             logic->AtNight = true;
 
             VariableScope scope;
-            const auto& eval = connection.ExpressionTable.Root.Expression->Evaluate(scope);
+            const auto& eval = expression->Evaluate(scope);
             PopulateExpressionValues(connection.ExpressionTable.Root, eval, AgeTime::AdultNight);
 
             logic->IsAdult = false;
@@ -569,7 +607,10 @@ static void CalculateShowRandomizerCheck() {
                 connection.AdultDayAccess = region.adultDay;
                 connection.AdultNightAccess = region.adultNight;
 
-                PopulateConnectionExpression(connection, locationAccess.GetConditionStr());
+                PopulateConnectionExpression(
+                    connection, { LogicRootKind::Location,
+                                  EnumToString(RandomizerRegion(randomizerRegion)).value_or(""),
+                                  EnumToString(showRandomizerCheck).value_or("") });
 
                 node.Connections.emplace_back(std::move(connection));
                 logic->CurrentRegionKey = RR_NONE;
@@ -632,7 +673,9 @@ static void CalculateShowRandomizerRegion() {
         connection.AdultDayAccess = parentAccess.AdultDay;
         connection.AdultNightAccess = parentAccess.AdultNight;
 
-        PopulateConnectionExpression(connection, entrance->GetConditionStr());
+        PopulateConnectionExpression(
+            connection, { LogicRootKind::Exit, EnumToString(entrance->GetParentRegionKey()).value_or(""),
+                          EnumToString(entrance->GetOriginalConnectedRegionKey()).value_or("") });
 
         node.Connections.emplace_back(std::move(connection));
         logic->CurrentRegionKey = RR_NONE;
@@ -678,7 +721,9 @@ static void CalculateShowRandomizerEvent() {
         connection.AdultDayAccess = region.adultDay;
         connection.AdultNightAccess = region.adultNight;
 
-        PopulateConnectionExpression(connection, eventInfo.ConditionStr);
+        PopulateConnectionExpression(connection,
+                                     { LogicRootKind::Event, EnumToString(eventInfo.RandomizerRegion).value_or(""),
+                                       showEvent });
 
         node.Connections.emplace_back(std::move(connection));
         logic->CurrentRegionKey = RR_NONE;
@@ -691,17 +736,19 @@ static void CalculateShowRandomizerEvent() {
     showEvent.clear();
 }
 
-static bool HasExpressionChildren(const ExpressionTable::ExpressionRow& row) {
+static bool HasExpressionChildren(ExpressionTable::ExpressionRow& row) {
     if (dynamic_cast<const ParameterExpression*>(row.Expression)) {
-        for (const auto& child : row.Children) {
+        EnsureExpressionChildren(row);
+        for (auto& child : row.Children) {
             if (HasExpressionChildren(child)) {
                 return true;
             }
         }
-    } else if (!row.Children.empty()) {
+    } else if (row.Expression && !dynamic_cast<const ConditionExpression*>(row.Expression) &&
+               !row.Expression->GetChildren().empty()) {
         return true;
     }
-    for (const auto& body : row.ConditionBodies) {
+    for (auto& body : row.ConditionBodies) {
         if (HasExpressionChildren(body)) {
             return true;
         }
@@ -714,6 +761,7 @@ static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTabl
 
 static void DrawExpressionChildren(const LogicTrackerNode& node, const ExpressionTable& table,
                                    ExpressionTable::ExpressionRow& row, int level, size_t startColorIndex) {
+    EnsureExpressionChildren(row);
     for (size_t i = 0; i < row.Children.size(); ++i) {
         auto& child = row.Children[i];
         const auto childColorIndex = row.Expression->GetChildColorIndex(i, startColorIndex);
@@ -730,8 +778,18 @@ static void DrawExpressionChildren(const LogicTrackerNode& node, const Expressio
 
 static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTable& table,
                               ExpressionTable::ExpressionRow& row, int level, size_t startColorIndex) {
-    if (dynamic_cast<const MatchArmPatterns*>(row.Expression) && row.Children.empty()) {
+    if (dynamic_cast<const MatchArmPatterns*>(row.Expression) && row.Expression->GetChildren().empty()) {
         return;
+    }
+
+    bool hasChildren = false;
+    if (row.Expression && row.ErrorMessage.empty()) {
+        try {
+            hasChildren = HasExpressionChildren(row);
+        } catch (const std::exception& e) {
+            row.ErrorMessage = std::string("Expression Error: ") + e.what();
+            row.Expanded = false;
+        }
     }
 
     ImGui::TableNextRow();
@@ -762,7 +820,7 @@ static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTabl
     }
 
     const auto& expression = *row.Expression;
-    if (HasExpressionChildren(row)) {
+    if (hasChildren) {
         if (ImGui::Button(std::to_string(level).c_str())) {
             row.Expanded = !row.Expanded;
         }
@@ -790,7 +848,14 @@ static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTabl
     }
 
     ImGui::TableNextColumn();
-    expression.Draw(startColorIndex);
+    if (row.ErrorMessage.empty()) {
+        try {
+            expression.Draw(startColorIndex);
+        } catch (const std::exception& e) {
+            row.ErrorMessage = std::string("Expression Error: ") + e.what();
+            row.Expanded = false;
+        }
+    }
     if (!row.ErrorMessage.empty()) {
         ImGui::TextWrapped("%s", row.ErrorMessage.c_str());
     }
@@ -813,8 +878,13 @@ static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTabl
         }
     }
 
-    if (row.Expanded) {
-        DrawExpressionChildren(node, table, row, level + 1, startColorIndex);
+    if (row.Expanded && row.ErrorMessage.empty()) {
+        try {
+            DrawExpressionChildren(node, table, row, level + 1, startColorIndex);
+        } catch (const std::exception& e) {
+            row.ErrorMessage = std::string("Expression Error: ") + e.what();
+            row.Expanded = false;
+        }
     }
 
     if (level > 0) {
@@ -1071,9 +1141,6 @@ void LogicTrackerWindow::DrawElement() {
 }
 
 void LogicTrackerWindow::InitElement() {
-    for (auto* expression : GetExpressions()) {
-        expression->ResolveChildren();
-    }
 }
 
 void LogicTrackerWindow::UpdateElement() {

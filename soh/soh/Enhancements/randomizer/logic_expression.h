@@ -326,6 +326,10 @@ class FunctionCallExpression : public LogicExpression {
   public:
     FunctionCallExpression(std::string_view functionName, std::vector<index_t> parameters, index_t definition);
 
+    std::string_view GetFunctionName() const {
+        return _functionName;
+    }
+
     EvalResult Evaluate(VariableScope& scope) const override;
 
     std::string ToString() const override;
@@ -375,6 +379,10 @@ class ParameterExpression : public LogicExpression {
 class ValueExpression : public LogicExpression {
   public:
     ValueExpression(function_t function, std::string_view expression, bool isEvent);
+
+    bool IsEvent() const {
+        return _isEvent;
+    }
 
     EvalResult Evaluate(VariableScope& scope) const override;
 

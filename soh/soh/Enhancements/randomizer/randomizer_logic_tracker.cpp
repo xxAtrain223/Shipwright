@@ -574,9 +574,22 @@ static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTabl
     }
 
     bool hasChildren = false;
+    const ValueExpression* eventValue = nullptr;
     if (row.Expression && row.ErrorMessage.empty()) {
         try {
             hasChildren = HasExpressionChildren(row);
+            const LogicExpression* operand = row.Expression;
+            if (const auto* call = dynamic_cast<const ExternFunctionCallExpression*>(operand);
+                call && call->GetFunctionName() == "flag") {
+                operand = call->GetChildren()[0]->GetDisplayExpression();
+            }
+            while (dynamic_cast<const ParameterExpression*>(operand)) {
+                operand = operand->GetChildren()[0]->GetDisplayExpression();
+            }
+            const auto* value = dynamic_cast<const ValueExpression*>(operand);
+            if (value && value->IsEvent()) {
+                eventValue = value;
+            }
         } catch (const std::exception& e) {
             row.ErrorMessage = std::string("Expression Error: ") + e.what();
             row.Expanded = false;
@@ -619,23 +632,21 @@ static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTabl
         ImGui::BeginDisabled();
         ImGui::Button(std::to_string(level).c_str());
         ImGui::EndDisabled();
+    }
 
-        // TODO: re-implement
-        /*if (expression.GetType() == LogicExpression::Type::Value &&
-            expression.GetValueType() == LogicExpression::ValueType::Enum) {
-            std::string identifier = expression.ToString();
-            auto it = randomizerEventMap.find(identifier);
-            if (it != randomizerEventMap.end()) {
-                ImGui::SameLine();
-                if (ImGui::Button(ICON_FA_COGS)) {
-                    LogicTrackerWindow::ShowRandomizerEvent(identifier);
-                    clearNodesAfterNodeID = node.NodeId;
-                }
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Show Event Logic");
-                }
+    if (eventValue) {
+        std::string identifier = eventValue->ToString();
+        auto it = randomizerEventMap.find(identifier);
+        if (it != randomizerEventMap.end()) {
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_FA_COGS)) {
+                LogicTrackerWindow::ShowRandomizerEvent(identifier);
+                clearNodesAfterNodeID = node.NodeId;
             }
-        }*/
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Show Event Logic");
+            }
+        }
     }
 
     ImGui::TableNextColumn();

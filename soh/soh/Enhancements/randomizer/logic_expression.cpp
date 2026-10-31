@@ -162,17 +162,14 @@ size_t LogicExpressionCache::GetCachedExpressionCount() const {
 
 size_t LogicRootKeyHash::operator()(const LogicRootKey& key) const {
     size_t hash = std::hash<LogicRootKind>{}(key.Kind);
-    const auto combine = [&](size_t value) {
-        hash ^= value + size_t{ 0x9e3779b9 } + (hash << 6) + (hash >> 2);
-    };
+    const auto combine = [&](size_t value) { hash ^= value + size_t{ 0x9e3779b9 } + (hash << 6) + (hash >> 2); };
     combine(std::hash<std::string_view>{}(key.OwnerRegion));
     combine(std::hash<std::string_view>{}(key.Entry));
     combine(std::hash<uint32_t>{}(key.Occurrence));
     return hash;
 }
 
-LogicRootRegistry::LogicRootRegistry(LogicRootMap roots, uint64_t expressionCount,
-                                     expression_resolver_t resolver)
+LogicRootRegistry::LogicRootRegistry(LogicRootMap roots, uint64_t expressionCount, expression_resolver_t resolver)
     : _roots(std::move(roots)), _resolver(resolver) {
     if (expressionCount > uint64_t{ std::numeric_limits<index_t>::max() } + 1 || !resolver) {
         throw std::invalid_argument("Invalid logic expression resolver or count");
@@ -190,8 +187,8 @@ LogicRootRegistry::LogicRootRegistry(LogicRootMap roots, uint64_t expressionCoun
             throw std::invalid_argument("Logic root owner and entry must not be empty");
         }
         if (index >= expressionCount) {
-            throw std::invalid_argument("Invalid logic root expression: " + std::string(key.OwnerRegion) +
-                                        "/" + std::string(key.Entry));
+            throw std::invalid_argument("Invalid logic root expression: " + std::string(key.OwnerRegion) + "/" +
+                                        std::string(key.Entry));
         }
     }
 }
@@ -216,20 +213,17 @@ const LogicExpression* LogicRootRegistry::GetExpression(const LogicRootKey& key)
     return expression;
 }
 
-template <LogicTarget T>
-ConversionExpression<T>::ConversionExpression(index_t operand) {
+template <LogicTarget T> ConversionExpression<T>::ConversionExpression(index_t operand) {
     _children = { operand };
 }
 
-template <LogicTarget T>
-EvalResult ConversionExpression<T>::Evaluate(VariableScope& scope) const {
+template <LogicTarget T> EvalResult ConversionExpression<T>::Evaluate(VariableScope& scope) const {
     auto result = GetChildren()[0]->Evaluate(scope);
     result.Result = ConvertValue<T>(result.Result);
     return result;
 }
 
-template <LogicTarget T>
-std::string ConversionExpression<T>::ToString() const {
+template <LogicTarget T> std::string ConversionExpression<T>::ToString() const {
     return GetChildren()[0]->ToString();
 }
 
@@ -238,13 +232,11 @@ std::vector<std::pair<ImVec4, std::string>> ConversionExpression<T>::GetDrawingS
     return GetChildren()[0]->GetDrawingSegments(startColorIndex);
 }
 
-template <LogicTarget T>
-size_t ConversionExpression<T>::GetChildColorIndex(size_t, size_t startColorIndex) const {
+template <LogicTarget T> size_t ConversionExpression<T>::GetChildColorIndex(size_t, size_t startColorIndex) const {
     return startColorIndex;
 }
 
-template <LogicTarget T>
-const LogicExpression* ConversionExpression<T>::GetDisplayExpression() const {
+template <LogicTarget T> const LogicExpression* ConversionExpression<T>::GetDisplayExpression() const {
     return GetChildren()[0]->GetDisplayExpression();
 }
 
@@ -705,7 +697,8 @@ std::vector<std::pair<ImVec4, std::string>> FunctionCallExpression::GetDrawingSe
         const auto colorIndex = GetChildColorIndex(i, startColorIndex);
         /*segments.emplace_back(ScaleRGB(fontColors[colorIndex], 0.5f),
                               std::string(parameter->_parameterName) + ": ");*/
-        segments.emplace_back(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled), std::string(parameter->_parameterName) + ": ");
+        segments.emplace_back(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled),
+                              std::string(parameter->_parameterName) + ": ");
         segments.emplace_back(fontColors[colorIndex], parameter->GetChildren()[0]->ToString());
         if (i < _parameterCount - 1) {
             segments.emplace_back(ImGui::GetStyleColorVec4(ImGuiCol_Text), ", ");
@@ -807,19 +800,18 @@ std::vector<std::pair<ImVec4, std::string>> TernaryExpression::GetDrawingSegment
              { fontColors[GetChildColorIndex(2, startColorIndex)], WrapParentheses(this, children[2]) } };
 }
 
-
 static constexpr std::string_view matchDiscriminantName = "$match";
 
 template <typename T>
-    requires (LogicTarget<T> || std::is_same_v<T, value_t>)
-MatchExpression<T>::MatchExpression(index_t discriminant, std::vector<index_t> arms) {
+requires(LogicTarget<T> || std::is_same_v<T, value_t>) MatchExpression<T>::MatchExpression(index_t discriminant,
+                                                                                           std::vector<index_t> arms) {
     _children.push_back(discriminant);
     _children.insert(_children.end(), arms.begin(), arms.end());
 }
 
 template <typename T>
-    requires (LogicTarget<T> || std::is_same_v<T, value_t>)
-EvalResult MatchExpression<T>::Evaluate(VariableScope& scope) const {
+requires(LogicTarget<T> || std::is_same_v<T, value_t>) EvalResult MatchExpression<T>::Evaluate(VariableScope& scope)
+const {
     EvalResult evalResult;
     evalResult.Expression = this;
     evalResult.Result = ConvertResult(false);
@@ -848,8 +840,8 @@ EvalResult MatchExpression<T>::Evaluate(VariableScope& scope) const {
 }
 
 template <typename T>
-    requires (LogicTarget<T> || std::is_same_v<T, value_t>)
-std::string MatchExpression<T>::ToString() const {
+requires(LogicTarget<T> || std::is_same_v<T, value_t>) std::string MatchExpression<T>::ToString()
+const {
     auto children = GetChildren();
     std::string result = "match " + children[0]->ToString() + " {";
     for (size_t i = 1; i < children.size(); ++i) {
@@ -859,8 +851,9 @@ std::string MatchExpression<T>::ToString() const {
 }
 
 template <typename T>
-    requires (LogicTarget<T> || std::is_same_v<T, value_t>)
-std::vector<std::pair<ImVec4, std::string>> MatchExpression<T>::GetDrawingSegments(size_t startColorIndex) const {
+requires(LogicTarget<T> || std::is_same_v<T, value_t>)
+    std::vector<std::pair<ImVec4, std::string>> MatchExpression<T>::GetDrawingSegments(size_t startColorIndex)
+const {
     auto children = GetChildren();
     const auto textColor = ImGui::GetStyleColorVec4(ImGuiCol_Text);
     std::vector<std::pair<ImVec4, std::string>> segments = {
@@ -947,14 +940,16 @@ EvalResult MatchArmPatterns::Evaluate(VariableScope& scope) const {
     for (size_t i = 0; i < _children.size(); ++i) {
         auto patternResult = EvaluateChild(scope, i);
         evalResult.Children.push_back(patternResult);
-        const bool matched = std::visit([](auto a, auto b) -> bool {
-            if constexpr (std::is_integral_v<decltype(a)> && std::is_integral_v<decltype(b)>) {
-                using ComparisonType = decltype(+a + +b);
-                return static_cast<ComparisonType>(a) == static_cast<ComparisonType>(b);
-            } else {
-                throw std::runtime_error("Cannot compare condition values");
-            }
-        }, discriminant, patternResult.Result);
+        const bool matched = std::visit(
+            [](auto a, auto b) -> bool {
+                if constexpr (std::is_integral_v<decltype(a)> && std::is_integral_v<decltype(b)>) {
+                    using ComparisonType = decltype(+a + +b);
+                    return static_cast<ComparisonType>(a) == static_cast<ComparisonType>(b);
+                } else {
+                    throw std::runtime_error("Cannot compare condition values");
+                }
+            },
+            discriminant, patternResult.Result);
         if (matched) {
             evalResult.Result = true;
             break;

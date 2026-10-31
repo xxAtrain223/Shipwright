@@ -18,8 +18,7 @@
 
 class LogicStateGuard {
   public:
-    LogicStateGuard()
-        : isChild(logic->IsChild), isAdult(logic->IsAdult), atDay(logic->AtDay), atNight(logic->AtNight) {
+    LogicStateGuard() : isChild(logic->IsChild), isAdult(logic->IsAdult), atDay(logic->AtDay), atNight(logic->AtNight) {
     }
 
     ~LogicStateGuard() {
@@ -227,8 +226,7 @@ static void EnsureExpressionChildren(ExpressionTable::ExpressionRow& row) {
 
 enum class AgeTime { ChildDay, ChildNight, AdultDay, AdultNight };
 
-static void PopulateExpressionValues(ExpressionTable::ExpressionRow& row, const EvalResult& eval,
-                                     AgeTime ageTime) {
+static void PopulateExpressionValues(ExpressionTable::ExpressionRow& row, const EvalResult& eval, AgeTime ageTime) {
     EnsureExpressionChildren(row);
     const auto& invocation = eval.Invocation;
     const auto& displayed = std::holds_alternative<condition_t>(eval.Result) && invocation ? *invocation : eval;
@@ -396,10 +394,10 @@ static void CalculateShowRandomizerCheck() {
                 connection.AdultDayAccess = region.adultDay;
                 connection.AdultNightAccess = region.adultNight;
 
-                PopulateConnectionExpression(
-                    connection, { LogicRootKind::Location,
-                                  EnumToString(RandomizerRegion(randomizerRegion)).value_or(""),
-                                  EnumToString(showRandomizerCheck).value_or("") });
+                PopulateConnectionExpression(connection,
+                                             { LogicRootKind::Location,
+                                               EnumToString(RandomizerRegion(randomizerRegion)).value_or(""),
+                                               EnumToString(showRandomizerCheck).value_or("") });
 
                 node.Connections.emplace_back(std::move(connection));
                 logic->CurrentRegionKey = RR_NONE;
@@ -463,9 +461,9 @@ static void CalculateShowRandomizerRegion() {
         connection.AdultDayAccess = parentAccess.AdultDay;
         connection.AdultNightAccess = parentAccess.AdultNight;
 
-        PopulateConnectionExpression(
-            connection, { LogicRootKind::Exit, EnumToString(entrance->GetParentRegionKey()).value_or(""),
-                          EnumToString(entrance->GetOriginalConnectedRegionKey()).value_or("") });
+        PopulateConnectionExpression(connection,
+                                     { LogicRootKind::Exit, EnumToString(entrance->GetParentRegionKey()).value_or(""),
+                                       EnumToString(entrance->GetOriginalConnectedRegionKey()).value_or("") });
 
         node.Connections.emplace_back(std::move(connection));
         logic->CurrentRegionKey = RR_NONE;
@@ -512,9 +510,8 @@ static void CalculateShowRandomizerEvent() {
         connection.AdultDayAccess = region.adultDay;
         connection.AdultNightAccess = region.adultNight;
 
-        PopulateConnectionExpression(connection,
-                                     { LogicRootKind::Event, EnumToString(eventInfo.RandomizerRegion).value_or(""),
-                                       showEvent });
+        PopulateConnectionExpression(
+            connection, { LogicRootKind::Event, EnumToString(eventInfo.RandomizerRegion).value_or(""), showEvent });
 
         node.Connections.emplace_back(std::move(connection));
         logic->CurrentRegionKey = RR_NONE;

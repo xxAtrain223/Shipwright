@@ -23,7 +23,7 @@ using index_t = uint32_t;
 using condition_t = std::shared_ptr<const ConditionValue>;
 using value_t = std::variant<bool, int8_t, int16_t, int32_t, uint8_t, uint16_t, uint32_t, condition_t>;
 using bindings_t = std::unordered_map<std::string, value_t>;
-using function_t = value_t(*)(VariableScope&);
+using function_t = value_t (*)(VariableScope&);
 
 static bool ToBool(const std::optional<value_t>& value) {
     if (!value.has_value()) {
@@ -62,9 +62,9 @@ template <typename T> static T ToInt(const std::optional<value_t>& value) {
 }
 
 template <typename T>
-concept LogicTarget = std::is_same_v<T, bool> || std::is_same_v<T, int8_t> || std::is_same_v<T, int16_t> ||
-                      std::is_same_v<T, int32_t> || std::is_same_v<T, uint8_t> || std::is_same_v<T, uint16_t> ||
-                      std::is_same_v<T, uint32_t>;
+concept LogicTarget =
+    std::is_same_v<T, bool> || std::is_same_v<T, int8_t> || std::is_same_v<T, int16_t> || std::is_same_v<T, int32_t> ||
+    std::is_same_v<T, uint8_t> || std::is_same_v<T, uint16_t> || std::is_same_v<T, uint32_t>;
 
 template <LogicTarget T> value_t ConvertValue(const value_t& value) {
     if constexpr (std::is_same_v<T, bool>) {
@@ -82,7 +82,6 @@ LogicExpression* GetExpression(index_t index);
 
 class LogicExpression {
   public:
-
     virtual ~LogicExpression() = default;
 
     virtual EvalResult Evaluate(VariableScope& scope) const = 0;
@@ -142,7 +141,6 @@ struct EvalResult {
     std::vector<EvalResult> Children;
     size_t ChildIndex = 0;
     std::shared_ptr<const EvalResult> Invocation;
-
 };
 
 struct VariableScope {
@@ -191,8 +189,7 @@ const LogicRootMap& GetLogicRoots();
 
 class LogicRootRegistry {
   public:
-    LogicRootRegistry(LogicRootMap roots, uint64_t expressionCount,
-                      expression_resolver_t resolver = ::GetExpression);
+    LogicRootRegistry(LogicRootMap roots, uint64_t expressionCount, expression_resolver_t resolver = ::GetExpression);
 
     std::optional<index_t> Find(const LogicRootKey& key) const;
 
@@ -408,8 +405,7 @@ class TernaryExpression : public LogicExpression {
 };
 
 template <typename T = value_t>
-    requires (LogicTarget<T> || std::is_same_v<T, value_t>)
-class MatchExpression : public LogicExpression {
+requires(LogicTarget<T> || std::is_same_v<T, value_t>) class MatchExpression : public LogicExpression {
   public:
     MatchExpression(index_t discriminant, std::vector<index_t> arms);
 
@@ -441,8 +437,7 @@ class MatchArm : public LogicExpression {
 
   private:
     template <typename T>
-        requires (LogicTarget<T> || std::is_same_v<T, value_t>)
-    friend class MatchExpression;
+    requires(LogicTarget<T> || std::is_same_v<T, value_t>) friend class MatchExpression;
 
     EvalResult EvaluateBody(VariableScope& scope) const;
 

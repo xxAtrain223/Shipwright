@@ -839,6 +839,7 @@ const {
     return evalResult;
 }
 
+#if 0 // Omit match arms to cut down on the displayed text
 template <typename T>
 requires(LogicTarget<T> || std::is_same_v<T, value_t>) std::string MatchExpression<T>::ToString()
 const {
@@ -868,6 +869,26 @@ const {
     segments.push_back({ textColor, "\n}" });
     return segments;
 }
+#else
+template <typename T>
+    requires(LogicTarget<T> || std::is_same_v<T, value_t>)
+std::string MatchExpression<T>::ToString() const {
+    auto children = GetChildren();
+    return "match " + children[0]->ToString() + " { <" + std::to_string(GetChildren().size() - 1) + " arms> }";
+}
+
+template <typename T>
+    requires(LogicTarget<T> || std::is_same_v<T, value_t>)
+std::vector<std::pair<ImVec4, std::string>> MatchExpression<T>::GetDrawingSegments(size_t startColorIndex) const {
+    return {
+        { ImGui::GetStyleColorVec4(ImGuiCol_Text), "match " },
+        { fontColors[GetChildColorIndex(0, startColorIndex)], GetChildren()[0]->ToString() },
+        { ImGui::GetStyleColorVec4(ImGuiCol_Text), " { " },
+        { fontColors[GetChildColorIndex(1, startColorIndex)], "<" + std::to_string(GetChildren().size() - 1) + " arms>" },
+        { ImGui::GetStyleColorVec4(ImGuiCol_Text), " }" },
+    };
+}
+#endif
 
 template class MatchExpression<value_t>;
 template class MatchExpression<bool>;

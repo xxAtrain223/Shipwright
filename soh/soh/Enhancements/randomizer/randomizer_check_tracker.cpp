@@ -1,6 +1,7 @@
 #include "randomizer_check_tracker.h"
 #include "randomizer_entrance_tracker.h"
 #include "randomizer_item_tracker.h"
+#include "randomizer_logic_tracker.h"
 #include "randomizerTypes.h"
 #include "soh/OTRGlobals.h"
 #include "soh/cvar_prefixes.h"
@@ -190,7 +191,7 @@ bool hideSaved = false;
 bool hideCollected = false;
 bool showHidden = true;
 bool mystery = false;
-bool showLogicTooltip = false;
+bool showLogicButton = false;
 bool enableAvailableChecks = false;
 bool onlyShowAvailable = false;
 
@@ -979,7 +980,7 @@ void CheckTrackerWindow::DrawElement() {
     hideCollected = CVarGetInteger(CVAR_TRACKER_CHECK("Collected.Hide"), 0);
     showHidden = CVarGetInteger(CVAR_TRACKER_CHECK("ShowHidden"), 0);
     mystery = CVarGetInteger(CVAR_RANDOMIZER_ENHANCEMENT("MysteriousShuffle"), 0);
-    showLogicTooltip = CVarGetInteger(CVAR_TRACKER_CHECK("ShowLogic"), 0);
+    showLogicButton = CVarGetInteger(CVAR_TRACKER_CHECK("ShowLogic"), 0);
     enableAvailableChecks = CVarGetInteger(CVAR_TRACKER_CHECK("EnableAvailableChecks"), 0);
     onlyShowAvailable = CVarGetInteger(CVAR_TRACKER_CHECK("OnlyShowAvailable"), 0);
 
@@ -1933,15 +1934,13 @@ void DrawLocation(RandomizerCheck rc) {
         ImGui::PopStyleColor();
     }
 
-    if (showLogicTooltip) {
-        for (auto& locationInRegion : areaTable[itemLoc->GetParentRegionKey()].locations) {
-            if (locationInRegion.GetLocation() == rc) {
-                std::string conditionStr = locationInRegion.GetConditionStr();
-                if (conditionStr != "true") {
-                    UIWidgets::Tooltip(conditionStr.c_str());
-                }
-                break;
-            }
+    if (showLogicButton && enableAvailableChecks) {
+        ImGui::SameLine();
+        if (ImGui::Button((std::string(ICON_FA_COGS) + "##" + std::to_string(rc)).c_str())) {
+            LogicTrackerWindow::ShowRandomizerCheck(rc);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Show Check Logic");
         }
     }
 }
@@ -2177,11 +2176,11 @@ void CheckTrackerSettingsWindow::DrawElement() {
 
         SohGui::GetSohMenu()->MenuDrawItem(showGSWidget, ImGui::GetContentRegionAvail().x, THEME_COLOR);
 
-        SohGui::GetSohMenu()->MenuDrawItem(showLogicWidget, ImGui::GetContentRegionAvail().x, THEME_COLOR);
-
         ImGui::BeginDisabled(CVarGetInteger(CVAR_SETTING("DisableChanges"), 0));
         SohGui::GetSohMenu()->MenuDrawItem(checkAvailabilityWidget, ImGui::GetContentRegionAvail().x, THEME_COLOR);
         ImGui::EndDisabled();
+
+        SohGui::GetSohMenu()->MenuDrawItem(showLogicWidget, ImGui::GetContentRegionAvail().x, THEME_COLOR);
 
         // Filtering settings
         UIWidgets::CVarCheckbox(
@@ -2318,13 +2317,6 @@ void RegisterCheckTrackerWidgets() {
         });
     SohGui::GetSohMenu()->AddSearchWidget({ showGSWidget, "Randomizer", "Check Tracker", "General Settings" });
 
-    showLogicWidget = { .name = "Show Logic", .type = WidgetType::WIDGET_CVAR_CHECKBOX };
-    showLogicWidget.CVar(CVAR_TRACKER_CHECK("ShowLogic"))
-        .Options(CheckboxOptions()
-                     .Color(THEME_COLOR)
-                     .Tooltip("If enabled, will show a check's logic when hovering over it."));
-    SohGui::GetSohMenu()->AddSearchWidget({ showLogicWidget, "Randomizer", "Check Tracker", "General Settings" });
-
     checkAvailabilityWidget = { .name = "Enable Available Checks", .type = WidgetType::WIDGET_CVAR_CHECKBOX };
     checkAvailabilityWidget.CVar(CVAR_TRACKER_CHECK("EnableAvailableChecks"))
         .Options(CheckboxOptions()
@@ -2333,8 +2325,31 @@ void RegisterCheckTrackerWidgets() {
                               "with your current progress."))
         .Callback([&](WidgetInfo& info) {
             enableAvailableChecks = CVarGetInteger(CVAR_TRACKER_CHECK("EnableAvailableChecks"), 0);
+            if (!enableAvailableChecks) {
+                CVarSetInteger(CVAR_TRACKER_CHECK("ShowLogic"), 0);
+                showLogicButton = false;
+                Ship::Context::GetInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            }
             RecalculateAvailableChecks();
         });
+
+    showLogicWidget = { .name = "Show Logic", .type = WidgetType::WIDGET_CVAR_CHECKBOX };
+    showLogicWidget.CVar(CVAR_TRACKER_CHECK("ShowLogic"))
+        .Options(CheckboxOptions()
+                     .Color(THEME_COLOR)
+                     .Tooltip("If enabled, will add a button to show a check's logic. "
+                              "Available Checks must be enabled to populate the current region access and logical "
+                              "event state used to evaluate check logic."))
+        .PreFunc([](WidgetInfo& info) {
+            info.options->disabled = !CVarGetInteger(CVAR_TRACKER_CHECK("EnableAvailableChecks"), 0);
+            info.options->disabledTooltip = info.options->tooltip;
+            if (info.options->disabled && CVarGetInteger(info.cVar, 0)) {
+                CVarSetInteger(info.cVar, 0);
+                showLogicButton = false;
+                Ship::Context::GetInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            }
+        });
+    SohGui::GetSohMenu()->AddSearchWidget({ showLogicWidget, "Randomizer", "Check Tracker", "General Settings" });
 }
 
 static RegisterMenuInitFunc menuInitFunc(RegisterCheckTrackerWidgets);

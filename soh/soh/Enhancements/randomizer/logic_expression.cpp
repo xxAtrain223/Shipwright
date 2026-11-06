@@ -528,8 +528,18 @@ bool ArithmeticExpression::TryShortCircuit(const value_t& left, value_t& result)
     return false;
 }
 
+template <typename T> static auto UnwrapEnumValue(T value) {
+    if constexpr (std::is_same_v<T, EnumValue>) {
+        return value.Value;
+    } else {
+        return value;
+    }
+}
+
 value_t ArithmeticExpression::Combine(const value_t& left, const value_t& right) const {
-    auto operate = [&](auto a, auto b) -> value_t {
+    auto operate = [&](auto leftValue, auto rightValue) -> value_t {
+        const auto a = UnwrapEnumValue(leftValue);
+        const auto b = UnwrapEnumValue(rightValue);
         if constexpr (std::is_integral_v<decltype(a)> && std::is_integral_v<decltype(b)>) {
             using ArithmeticType = decltype(+a + +b);
 
@@ -577,7 +587,9 @@ EvalResult ComparisonExpression::Evaluate(VariableScope& scope) const {
     auto rightResult = EvaluateChild(scope, 1);
     evalResult.Children.push_back(rightResult);
 
-    auto compare = [&](auto a, auto b) -> bool {
+    auto compare = [&](auto leftValue, auto rightValue) -> bool {
+        const auto a = UnwrapEnumValue(leftValue);
+        const auto b = UnwrapEnumValue(rightValue);
         if constexpr (std::is_integral_v<decltype(a)> && std::is_integral_v<decltype(b)>) {
             using ComparisonType = decltype(+a + +b);
 
@@ -962,7 +974,9 @@ EvalResult MatchArmPatterns::Evaluate(VariableScope& scope) const {
         auto patternResult = EvaluateChild(scope, i);
         evalResult.Children.push_back(patternResult);
         const bool matched = std::visit(
-            [](auto a, auto b) -> bool {
+            [](auto leftValue, auto rightValue) -> bool {
+                const auto a = UnwrapEnumValue(leftValue);
+                const auto b = UnwrapEnumValue(rightValue);
                 if constexpr (std::is_integral_v<decltype(a)> && std::is_integral_v<decltype(b)>) {
                     using ComparisonType = decltype(+a + +b);
                     return static_cast<ComparisonType>(a) == static_cast<ComparisonType>(b);

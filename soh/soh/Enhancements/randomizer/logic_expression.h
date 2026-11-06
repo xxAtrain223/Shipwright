@@ -21,7 +21,14 @@ struct ImVec4;
 
 using index_t = uint32_t;
 using condition_t = std::shared_ptr<const ConditionValue>;
-using value_t = std::variant<bool, int8_t, int16_t, int32_t, uint8_t, uint16_t, uint32_t, condition_t>;
+struct EnumValue {
+    int32_t Value;
+    std::string_view Name;
+
+    bool operator==(const EnumValue&) const = default;
+};
+
+using value_t = std::variant<bool, int8_t, int16_t, int32_t, uint8_t, uint16_t, uint32_t, condition_t, EnumValue>;
 using bindings_t = std::unordered_map<std::string, value_t>;
 using function_t = value_t (*)(VariableScope&);
 
@@ -36,6 +43,8 @@ static bool ToBool(const std::optional<value_t>& value) {
                 return v;
             } else if constexpr (std::is_integral_v<V>) {
                 return v != 0;
+            } else if constexpr (std::is_same_v<V, EnumValue>) {
+                return v.Value != 0;
             } else {
                 throw std::bad_variant_access();
             }
@@ -54,6 +63,8 @@ template <typename T> static T ToInt(const std::optional<value_t>& value) {
                 return v ? 1 : 0;
             } else if constexpr (std::is_integral_v<V>) {
                 return static_cast<T>(v);
+            } else if constexpr (std::is_same_v<V, EnumValue>) {
+                return static_cast<T>(v.Value);
             } else {
                 throw std::bad_variant_access();
             }

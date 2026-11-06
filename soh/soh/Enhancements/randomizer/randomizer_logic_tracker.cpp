@@ -43,6 +43,8 @@ static std::string ToString(const value_t& value) {
                 return v ? "true" : "false";
             } else if constexpr (std::is_same_v<V, condition_t>) {
                 return "";
+            } else if constexpr (std::is_same_v<V, EnumValue>) {
+                return std::string(v.Name);
             } else {
                 return std::to_string(v);
             }

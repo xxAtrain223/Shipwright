@@ -16,3 +16,13 @@ class LogicTrackerWindow : public Ship::GuiWindow {
     void InitElement() override;
     void UpdateElement() override;
 };
+
+class LogicTrackerUserGuideWindow : public Ship::GuiWindow {
+  public:
+    using GuiWindow::GuiWindow;
+    void DrawElement() override;
+
+  protected:
+    void InitElement() override;
+    void UpdateElement() override;
+};

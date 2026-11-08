@@ -102,6 +102,10 @@ void LogicExpression::Draw(size_t startColorIndex) const {
     DrawColoredWrappedText(drawingSegments);
 }
 
+void LogicExpression::SetResolver(expression_resolver_t resolver) {
+    _resolver = resolver;
+}
+
 std::vector<std::pair<ImVec4, std::string>> LogicExpression::GetDrawingSegments(size_t startColorIndex) const {
     return { { fontColors[startColorIndex % fontColors.size()], ToString() } };
 }

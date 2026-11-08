@@ -89,6 +89,8 @@ struct EvalResult;
 using extern_function_t = value_t (*)(std::span<EvalResult>);
 
 class LogicExpression;
+
+using expression_resolver_t = LogicExpression* (*)(index_t);
 LogicExpression* GetExpression(index_t index);
 
 class LogicExpression {
@@ -107,18 +109,19 @@ class LogicExpression {
 
     void Draw(size_t startColorIndex = 0) const;
 
+    void SetResolver(expression_resolver_t resolver);
+
   protected:
     std::vector<index_t> _children;
+    expression_resolver_t _resolver = GetExpression;
 
     EvalResult EvaluateChild(VariableScope& scope, size_t childIndex) const;
 
   public:
     auto GetChildren() const {
-        return _children | std::views::transform([](index_t child) { return GetExpression(child); });
+        return _children | std::views::transform([this](index_t child) { return _resolver(child); });
     }
 };
-
-using expression_resolver_t = LogicExpression* (*)(index_t);
 
 using expression_factory_t = std::unique_ptr<LogicExpression> (*)(index_t);
 

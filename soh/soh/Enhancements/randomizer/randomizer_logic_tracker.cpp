@@ -62,6 +62,7 @@ static std::string ToString(const std::optional<value_t>& value) {
 struct ExpressionTable {
     struct ExpressionRow {
         const LogicExpression* Expression = nullptr;
+        std::optional<std::vector<std::pair<ImVec4, std::string>>> DrawingSegments;
         std::vector<ExpressionRow> Children;
         std::vector<ExpressionRow> ConditionBodies;
         std::optional<value_t> ChildDay;
@@ -547,6 +548,13 @@ static bool HasExpressionChildren(ExpressionTable::ExpressionRow& row) {
     return false;
 }
 
+static void DrawExpressionText(ExpressionTable::ExpressionRow& row, size_t startColorIndex) {
+    if (!row.DrawingSegments) {
+        row.DrawingSegments = row.Expression->GetDrawingSegments(startColorIndex);
+    }
+    LogicExpression::DrawSegments(*row.DrawingSegments);
+}
+
 static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTable& table,
                               ExpressionTable::ExpressionRow& row, int level, size_t startColorIndex = 0);
 
@@ -623,7 +631,6 @@ static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTabl
         return;
     }
 
-    const auto& expression = *row.Expression;
     if (hasChildren) {
         if (ImGui::Button(std::to_string(level).c_str())) {
             row.Expanded = !row.Expanded;
@@ -654,7 +661,7 @@ static void DrawExpressionRow(const LogicTrackerNode& node, const ExpressionTabl
     ImGui::TableNextColumn();
     if (row.ErrorMessage.empty()) {
         try {
-            expression.Draw(startColorIndex);
+            DrawExpressionText(row, startColorIndex);
         } catch (const std::exception& e) {
             row.ErrorMessage = std::string("Expression Error: ") + e.what();
             row.Expanded = false;

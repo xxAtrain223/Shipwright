@@ -108,6 +108,7 @@ class LogicExpression {
     virtual const LogicExpression* GetDisplayExpression() const;
 
     void Draw(size_t startColorIndex = 0) const;
+    static void DrawSegments(const std::vector<std::pair<ImVec4, std::string>>& segments);
 
     void SetResolver(expression_resolver_t resolver);
 

@@ -2183,9 +2183,9 @@ void CheckTrackerSettingsWindow::DrawElement() {
         SohGui::GetSohMenu()->MenuDrawItem(showLogicWidget, ImGui::GetContentRegionAvail().x, THEME_COLOR);
         ImGui::SameLine();
         auto userGuideOptions = UIWidgets::ButtonOptions()
-                                       .Size(UIWidgets::Sizes::Inline)
-                                       .Color(THEME_COLOR)
-                                       .Tooltip("Open the Logic Tracker user guide and examples.");
+                                    .Size(UIWidgets::Sizes::Inline)
+                                    .Color(THEME_COLOR)
+                                    .Tooltip("Open the Logic Tracker user guide and examples.");
         if (UIWidgets::Button("User Guide", userGuideOptions)) {
             auto window = Ship::Context::GetInstance()->GetWindow()->GetGui()->GetGuiWindow("Logic Tracker User Guide");
             window->Show();

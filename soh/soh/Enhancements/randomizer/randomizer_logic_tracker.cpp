@@ -1049,7 +1049,7 @@ static LogicExpression* GetExampleExpressions(index_t index) {
         }
     };
     // clang-format on
-    
+
     std::unique_ptr<LogicExpression> e = createExpression(index);
     e->SetResolver(GetExampleExpressions);
     auto ptr = e.get();
@@ -1057,10 +1057,11 @@ static LogicExpression* GetExampleExpressions(index_t index) {
     return ptr;
 }
 
-static ExpressionTable::ExpressionRow CreateUserGuideRow(
-    index_t index, std::optional<value_t> childDay, std::optional<value_t> childNight,
-    std::optional<value_t> adultDay, std::optional<value_t> adultNight,
-    std::vector<ExpressionTable::ExpressionRow> children = {}) {
+static ExpressionTable::ExpressionRow CreateUserGuideRow(index_t index, std::optional<value_t> childDay,
+                                                         std::optional<value_t> childNight,
+                                                         std::optional<value_t> adultDay,
+                                                         std::optional<value_t> adultNight,
+                                                         std::vector<ExpressionTable::ExpressionRow> children = {}) {
     ExpressionTable::ExpressionRow row;
     row.Expression = GetExampleExpressions(index);
     row.ChildDay = std::move(childDay);
@@ -1079,9 +1080,9 @@ static ExpressionTable::ExpressionRow CreateUserGuideConditionRow(index_t index,
 }
 
 static LogicTrackerNode CreateUserGuideNode(size_t id, const char* name, ExpressionTable::ExpressionRow root,
-                                          bool expandExpression = false,
-                                          RandomizerRegion sourceRegion = RR_KAKARIKO_VILLAGE,
-                                          const char* sourceName = "Kakariko Village") {
+                                            bool expandExpression = false,
+                                            RandomizerRegion sourceRegion = RR_KAKARIKO_VILLAGE,
+                                            const char* sourceName = "Kakariko Village") {
     LogicTrackerNode node;
     node.NodeId = id;
     node.NodeName = name;
@@ -1113,8 +1114,8 @@ static LogicTrackerNode CreateUserGuideNode(size_t id, const char* name, Express
 
 void LogicTrackerUserGuideWindow::DrawElement() {
     ImGui::TextWrapped("Randomizer Checks and Regions often have several ways to access them, "
-        "so the logic tracker starts with the target you're investigating (Check, Region, or Event) "
-        "and shows the logic from every connected source region.");
+                       "so the logic tracker starts with the target you're investigating (Check, Region, or Event) "
+                       "and shows the logic from every connected source region.");
 
     const ImVec4 accentColor = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
     const auto drawHeading = [&](const char* heading) {
@@ -1138,13 +1139,15 @@ void LogicTrackerUserGuideWindow::DrawElement() {
     }
 
     if (drawHeading("2. Expand the requirements")) {
-        drawBullet("Level 0", "The full requirement expression. Click a numbered Level button to expand or collapse its parts.");
+        drawBullet("Level 0",
+                   "The full requirement expression. Click a numbered Level button to expand or collapse its parts.");
         drawBullet("Sub-expressions", "Smaller parts of a requirement, not additional connections.");
         drawBullet("true / false", "The requirement is satisfied / not satisfied.");
         drawBullet("Blank", "No evaluated value, not automatically false. The source may be unreachable for that "
                             "age/time, or the expression branch may have been skipped.");
         drawBullet("and / or", "Both requirements / either requirement.");
-        drawBullet("Expression colors", "Distinguish parts of a requirement; they help show the terms of the operation / function.");
+        drawBullet("Expression colors",
+                   "Distinguish parts of a requirement; they help show the terms of the operation / function.");
     }
 
     if (drawHeading("3. Access " ICON_FA_ARROW_RIGHT " Availability and Age / Time")) {
@@ -1164,10 +1167,11 @@ void LogicTrackerUserGuideWindow::DrawElement() {
     }
 
     if (drawHeading("5. any_age")) {
-        drawBullet("any_age(condition)", "Tests a requirement using the ages that can reach the current From region. "
-                                         "Child and Adult flags can both be enabled; at least one age must have access.");
+        drawBullet("any_age(condition)",
+                   "Tests a requirement using the ages that can reach the current From region. "
+                   "Child and Adult flags can both be enabled; at least one age must have access.");
         drawBullet("Shared actions", "An action possible as a reachable Adult can satisfy a shared requirement "
-                                    "for Child. This does not mean Child can equip Adult-only items.");
+                                     "for Child. This does not mean Child can equip Adult-only items.");
         drawBullet("Age/time columns", "Still name the outer connection's context. Inside this helper, a row "
                                        "such as is_adult() can be true in a Child column because the helper is "
                                        "testing access with different age flags.");
@@ -1178,8 +1182,8 @@ void LogicTrackerUserGuideWindow::DrawElement() {
                                   "The compact <N arms> display shows how many branches exist; expand its Level "
                                   "button to inspect the input and arms.");
         drawBullet("Pattern: body", "The pattern before the colon is compared with the input. The body after "
-                                   "the colon is the requirement used when that arm matches. Arms are checked "
-                                   "in order; normally the first matching arm supplies the result, even if false.");
+                                    "the colon is the requirement used when that arm matches. Arms are checked "
+                                    "in order; normally the first matching arm supplies the result, even if false.");
         drawBullet("A or B:", "Multiple patterns before the colon match either input value. This is different "
                               "from an or inside the requirement body.");
         drawBullet("_:", "An optional catch-all pattern, placed last. If no arm matches and there is no "
@@ -1313,14 +1317,17 @@ void LogicTrackerUserGuideWindow::DrawElement() {
             }
         };
 
-        drawExample("Check example", 0,
-                    "Assume Song of Storms can be played. The check requires Child and can_use(RG_SONG_OF_STORMS), "
-                    "so All access becomes Child availability. Adult fails the first AND term, leaving the song test blank.");
-        drawExample("Entrance example", 1,
-                    "Assume Silver Scale is missing and Iron Boots are usable as Adult. The scale OR boots alternatives "
-                    "give Adult availability.");
+        drawExample(
+            "Check example", 0,
+            "Assume Song of Storms can be played. The check requires Child and can_use(RG_SONG_OF_STORMS), "
+            "so All access becomes Child availability. Adult fails the first AND term, leaving the song test blank.");
+        drawExample(
+            "Entrance example", 1,
+            "Assume Silver Scale is missing and Iron Boots are usable as Adult. The scale OR boots alternatives "
+            "give Adult availability.");
         drawExample("Event example", 2,
-                    "Assume Power Bracelet is missing. This region's has(RG_POWER_BRACELET) requirement is false for every age/time.");
+                    "Assume Power Bracelet is missing. This region's has(RG_POWER_BRACELET) requirement is false for "
+                    "every age/time.");
         drawExample("Sub-expression example", 3,
                     "Assume Power Bracelet is owned and Hover Boots are usable as Adult. Child passes the nested "
                     "is_child() AND bracelet branch. Adult skips the bracelet test but passes the boots branch.");

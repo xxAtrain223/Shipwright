@@ -860,16 +860,16 @@ static void DrawNode(LogicTrackerNode& node) {
 
         for (int i = 0; i < node.Connections.size(); i++) {
             auto& connection = node.Connections[i];
+            ImGui::PushID(connection.ParentName.c_str());
 
             if (!connection.IsDiscovered) {
                 ImGui::BeginDisabled();
                 ImGui::CollapsingHeader("Undiscovered Entrance",
                                         ImGuiTreeNodeFlags_AllowOverlap | ImGuiTreeNodeFlags_SpanAvailWidth);
                 ImGui::EndDisabled();
+                ImGui::PopID();
                 continue;
             }
-
-            ImGui::PushID(connection.ParentName.c_str());
 
             if (node.IsExample) {
                 ImGui::SetNextItemOpen(true, ImGuiCond_Once);

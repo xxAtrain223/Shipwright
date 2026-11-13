@@ -885,8 +885,12 @@ static void DrawNode(LogicTrackerNode& node) {
                 ImGui::SetTooltip("Show Connection Logic");
             }
 
-            std::string accessAvailable =
-                GetAccessString(connection) + " " + ICON_FA_ARROW_RIGHT + " " + GetAvailableString(connection);
+            std::string accessString = GetAccessString(connection);
+            std::string availableString = GetAvailableString(connection);
+
+            std::string accessAvailable = accessString == availableString
+                                              ? availableString
+                                              : accessString + " " ICON_FA_ARROW_RIGHT " " + availableString;
 
             const float gearWidth = ImGui::CalcTextSize(ICON_FA_COGS).x + ImGui::GetStyle().FramePadding.x * 2.0f;
             const float accessX = connectionRight - ImGui::CalcTextSize(accessAvailable.c_str()).x -

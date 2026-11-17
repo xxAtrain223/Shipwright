@@ -76,23 +76,19 @@ inline bool is_mq() {
     return ctx->GetDungeon(dungeonKey)->IsMQ();
 }
 
-inline bool any_age(ConditionFn condition) {
+inline bool any_age(ConditionFnCap condition) {
     return AnyAgeTime(condition);
 }
 
 inline bool spirit_shared(
-    RandomizerRegion region, ConditionFn condition, bool anyAge = false, RandomizerRegion otherRegion = RR_NONE,
-    ConditionFn otherCondition = [] { return false; }, RandomizerRegion thirdRegion = RR_NONE,
-    ConditionFn thirdCondition = [] { return false; }) {
+    RandomizerRegion region, ConditionFnCap condition, bool anyAge = false, RandomizerRegion otherRegion = RR_NONE,
+    ConditionFnCap otherCondition = [] { return false; }, RandomizerRegion thirdRegion = RR_NONE,
+    ConditionFnCap thirdCondition = [] { return false; }) {
     return SpiritShared(region, condition, anyAge, otherRegion, otherCondition, thirdRegion, thirdCondition);
 }
 
 inline bool spirit_certain_access(RandomizerRegion region) {
     return SpiritCertainAccess(region);
-}
-
-inline bool can_use(const RandomizerGet item) {
-    return logic->CanUse(item);
 }
 
 inline bool can_plant_bean(const RandomizerRegion reg, const RandomizerGet bean) {

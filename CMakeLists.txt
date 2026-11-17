@@ -197,6 +197,13 @@ set(
     "Directory containing RLS-generated Shipwright logic"
 )
 
+set(
+    SHIPWRIGHT_RLS_TRACKER_GENERATED_DIR
+    "${SHIPWRIGHT_RLS_LOGIC_DIR}/generated/soh_tracker"
+    CACHE PATH
+    "Directory containing RLS-generated logic tracker expressions"
+)
+
 if(NOT EXISTS "${SHIPWRIGHT_RLS_LOGIC_DIR}/cmake/RandoLogic.cmake")
     message(FATAL_ERROR
         "The ShipOfHarkinian-RandoLogic submodule is not initialized:\n"
@@ -220,6 +227,9 @@ rls_add_logic_generation(
 
     OUTPUT_DIR
         "${SHIPWRIGHT_RLS_GENERATED_DIR}"
+
+    TRACKER_OUTPUT_DIR
+        "${SHIPWRIGHT_RLS_TRACKER_GENERATED_DIR}"
 
     TRANSPILER
         "soh"
